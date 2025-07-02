@@ -1,6 +1,6 @@
 import brian2 as b2
 from brian2 import start_scope, NeuronGroup, Synapses, StateMonitor, run, ms
-from matplotlib.pyplot import plot, xlabel, ylabel, legend
+import matplotlib.pyplot as plt
 from neurodynex3.cable_equation import passive_cable
 from neurodynex3.tools import input_factory
 from brian2 import prefs
@@ -9,36 +9,41 @@ from brian2 import prefs
 prefs.codegen.target = "numpy"
 
 # Optional: Call passive_cable.getting_started() if needed
-passive_cable.getting_started()
+#passive_cable.getting_started()
 
-def trial():
+# Define the network
+def create_network():
     start_scope()
 
+    # Neuron model equations
     eqs = '''
-    dv/dt = (I-v)/tau : 1
-    I : 1
-    tau : second
+    dv/dt = (I - v) / tau : 1
+    I : 1  # Input current
+    tau : second  # Membrane time constant
     '''
-    G = NeuronGroup(2, eqs, threshold='v>1', reset='v = 0', method='exact')
-    G.I = [2, 0]
-    G.tau = [10, 100]*ms
 
-    # Synapses
-    S = Synapses(G, G, on_pre='v_post += 0.2')
-    S.connect(i=0, j=1)
+    # Create 3 neurons: 2 input neurons and 1 output neuron
+    neurons = NeuronGroup(3, eqs, threshold='v > 0.99', reset='v = 0', method='exact')
+    neurons.I = [1.0, 1.0, 0.1]  # Input currents for neurons
+    neurons.tau = [10, 10, 100] * ms  # Membrane time constants
 
-    # State Monitor
-    M = StateMonitor(G, 'v', record=True)
+    # Synapses: Connect input neurons (0 and 1) to the output neuron (2)
+    syn = Synapses(neurons, neurons, on_pre='v_post += 0.5')  # Add 0.5 to output neuron's v
+    syn.connect(i=[0, 1], j=[2, 2])  # Connect neuron 0 and 1 to neuron 2
 
-    # Run simulation
-    run(100*ms)
+    # State monitor to record membrane potentials
+    monitor = StateMonitor(neurons, 'v', record=True)
+
+    # Run the simulation
+    run(100 * ms)
 
     # Plot results
-    plot(M.t/ms, M.v[0], label='Neuron 0')
-    plot(M.t/ms, M.v[1], label='Neuron 1')
-    xlabel('Time (ms)')
-    ylabel('v')
-    legend()
+    for i in range(3):
+        plt.plot(monitor.t / ms, monitor.v[i], label=f'Neuron {i}')
+    plt.xlabel('Time (ms)')
+    plt.ylabel('Membrane potential (v)')
+    plt.legend()
+    plt.show()
 
-# Call the trial function
-trial()
+# Call the function to create and simulate the network
+create_network()

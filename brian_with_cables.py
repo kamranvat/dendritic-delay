@@ -1,7 +1,7 @@
 from brian2 import *
 prefs.codegen.target = "numpy"   # Optional; makes things run without Cython
 
-def excite_one_dendrite(dendrite):
+def excite_one_dendrite(dendrite, time1, time2):
     start_scope()
 
     # Morphology: L (left dendrite) - soma - R (right dendrite)
@@ -18,6 +18,8 @@ def excite_one_dendrite(dendrite):
     neuron = SpatialNeuron(
         morphology=morpho,
         model=eqs,
+        threshold='v > 0.99*mV',
+        refractory='v > -10*mV',
         Cm=1*uF/cm**2,
         Ri=100*ohm*cm,
         method='exponential_euler',
@@ -28,12 +30,18 @@ def excite_one_dendrite(dendrite):
     neuron.El = -65*mV
 
     # Input group: spike train at given times
-    spiketimes = [50, 75, 100, 200]*ms
-    input = SpikeGeneratorGroup(1, [0]*len(spiketimes), spiketimes)
+    spiketimes1 = [time1]*ms
+    input1 = SpikeGeneratorGroup(1, [0]*len(spiketimes1), spiketimes1)
+
+    spiketimes2 = [time2]*ms
+    input2 = SpikeGeneratorGroup(1, [0]*len(spiketimes2), spiketimes2)
 
     # Connect input to the chosen dendrite
-    syn = Synapses(input, neuron, on_pre='v_post += 2*mV')
-    syn.connect(i=0, j=dendrite)
+    syn1 = Synapses(input1, neuron, on_pre='v_post += 0.5*mV')
+    syn1.connect(i=0, j=0)
+
+    syn2 = Synapses(input2, neuron, on_pre='v_post += 0.5*mV')
+    syn2.connect(i=0, j=2)
 
     M = StateMonitor(neuron, 'v', record=[0, 1, 2])
     run(500*ms)
@@ -49,10 +57,10 @@ def excite_one_dendrite(dendrite):
 
 def main():
     # Excite the first dendrite
-    excite_one_dendrite(0)
+    excite_one_dendrite(0, time1=100, time2=200)
 
     # Excite the second dendrite
-    excite_one_dendrite(2)
+    #excite_one_dendrite(2)
 
 if __name__ == "__main__":
     main()

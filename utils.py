@@ -106,16 +106,8 @@ def generate_delayed_spikes(base_spikes, delay):
     return [t + delay for t in base_spikes]
 
 
-if __name__ == "__main__":
-    # test
-    angle = 90
-    arrival_times = calculate_arrival_times(angle)
-    print(
-        f"Arrival times: Left Ear = {arrival_times[0]:.6f}ms, Right Ear = {arrival_times[1]:.6f}ms"
-    )
-
 def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
-    cycle_length = 1000/f_stim_Hz   # ms per period
+    cycle_length = 1000 / f_stim_Hz  # ms per period
     n_cycles = int(tmax_ms / cycle_length)
     p = f_pre_Hz / f_stim_Hz
     indices = []
@@ -128,3 +120,12 @@ def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
                 indices.append(axon)
                 times.append(time)
     return indices, times
+
+
+if __name__ == "__main__":
+    # test
+    angle = 90
+    arrival_times = calculate_arrival_times(angle)
+    print(
+        f"Arrival times: Left Ear = {arrival_times[0]:.6f}ms, Right Ear = {arrival_times[1]:.6f}ms"
+    )

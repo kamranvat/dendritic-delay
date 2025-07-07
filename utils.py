@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 
 def euclidean(p1, p2):
@@ -51,3 +52,18 @@ if __name__ == "__main__":
     print(
         f"Arrival times: Left Ear = {arrival_times[0]:.6f}ms, Right Ear = {arrival_times[1]:.6f}ms"
     )
+
+def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
+    cycle_length = 1000/f_stim_Hz   # ms per period
+    n_cycles = int(tmax_ms / cycle_length)
+    p = f_pre_Hz / f_stim_Hz
+    indices = []
+    times = []
+    for cycle in range(n_cycles):
+        base_time = cycle * cycle_length + phase
+        for axon in range(N):
+            if np.random.rand() < p:
+                time = base_time + np.random.normal(0, jitter_ms)
+                indices.append(axon)
+                times.append(time)
+    return indices, times

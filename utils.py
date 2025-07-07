@@ -44,6 +44,67 @@ def calculate_arrival_times(
     return (time_left, time_right)
 
 
+# Utility functions for generating spike distributions
+def generate_poisson_spikes(rate, duration, n_trials=1, seed=None):
+    """Generate Poisson spike trains.
+
+    Args:
+        rate (float): Firing rate in Hz
+        duration (float): Duration in ms
+        n_trials (int): Number of spike trains
+        seed (int): Random seed for reproducibility
+
+    Returns:
+        list: List of spike times in ms
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    spike_times = []
+    for trial in range(n_trials):
+        # Generate inter-spike intervals from exponential distribution
+        intervals = np.random.exponential(
+            1000.0 / rate, size=int(rate * duration / 1000 * 3)
+        )  # overestimate
+        times = np.cumsum(intervals)
+        times = times[times < duration]  # keep only spikes within duration
+        spike_times.extend(times)
+
+    return sorted(spike_times)
+
+
+def generate_regular_spikes(interval, duration, start_time=0):
+    """Generate regular spike train.
+
+    Args:
+        interval (float): Inter-spike interval in ms
+        duration (float): Duration in ms
+        start_time (float): First spike time in ms
+
+    Returns:
+        list: List of spike times in ms
+    """
+    spike_times = []
+    t = start_time
+    while t < duration:
+        spike_times.append(t)
+        t += interval
+    return spike_times
+
+
+def generate_delayed_spikes(base_spikes, delay):
+    """Generate delayed version of spike pattern.
+
+    Args:
+        base_spikes (list): Base spike times in ms
+        delay (float): Delay to add in ms
+
+    Returns:
+        list: Delayed spike times in ms
+    """
+    return [t + delay for t in base_spikes]
+
+
 if __name__ == "__main__":
     # test
     angle = 90

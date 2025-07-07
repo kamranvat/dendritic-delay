@@ -9,6 +9,7 @@ prefs.codegen.target = (
 
 
 def create_morphologies(resolution=10, max_dendrite_len=100):
+    # TODO resolution -> soma
     """Create morphologies for Jeffress model neurons.
 
     Args:
@@ -77,34 +78,8 @@ def create_neurons(morphologies):
     return neurons
 
 
-def create_input_groups(left_spike_times, right_spike_times):
-    """Create spike generator groups for left and right inputs.
-
-    Args:
-        left_spike_times (array-like): Spike times for left input (in ms)
-        right_spike_times (array-like): Spike times for right input (in ms)
-
-    Returns:
-        tuple: (input_left, input_right) SpikeGeneratorGroup objects
-    """
-    # Convert to Brian2 time units if needed
-    if hasattr(left_spike_times, "unit"):
-        left_times = left_spike_times
-    else:
-        left_times = np.array(left_spike_times) * ms
-
-    if hasattr(right_spike_times, "unit"):
-        right_times = right_spike_times
-    else:
-        right_times = np.array(right_spike_times) * ms
-
-    input_left = SpikeGeneratorGroup(1, [0] * len(left_times), left_times)
-    input_right = SpikeGeneratorGroup(1, [0] * len(right_times), right_times)
-
-    return input_left, input_right
-
-
 def connect_inputs_to_neurons(neurons, input_left, input_right, synapse_weight=2 * mV):
+    # TODO move to utils.py
     """Connect input groups to neurons via synapses.
 
     Args:
@@ -226,7 +201,7 @@ def print_simulation_info(dendrite_lengths, resolution):
 
 
 def create_jeffress_network(
-    resolution=10, max_dendrite_len=100, left_spike_times=[50], right_spike_times=[75]
+    resolution=10, max_dendrite_len=100, input_left=None, input_right=None
 ):
     """Create a complete Jeffress model network (high-level function).
 
@@ -244,9 +219,6 @@ def create_jeffress_network(
     # Create morphologies and neurons
     morphologies, dendrite_lengths = create_morphologies(resolution, max_dendrite_len)
     neurons = create_neurons(morphologies)
-
-    # Create inputs
-    input_left, input_right = create_input_groups(left_spike_times, right_spike_times)
 
     # Connect inputs to neurons
     synapses_left, synapses_right = connect_inputs_to_neurons(
@@ -299,73 +271,57 @@ def simulate_jeffress_network(network, duration=200 * ms, plot=True, verbose=Tru
 
 
 def main():
-    # Example 1: Using the high-level function (easiest)
-    print("=== Example 1: High-level function ===")
-    network = create_jeffress_network(
-        resolution=5,
-        max_dendrite_len=100,
-        left_spike_times=[30, 60, 90],
-        right_spike_times=[45, 75, 105],
-    )
-    simulate_jeffress_network(network, duration=150 * ms)
-
-    print("\n=== Example 2: Manual step-by-step construction ===")
-    # Example 2: Using individual functions for more control
     start_scope()
 
-    # Create morphologies and neurons
-    morphologies, dendrite_lengths = create_morphologies(
-        resolution=3, max_dendrite_len=50
+    # Sim params
+    dt = 0.1 * ms  # Set simulation time step
+    sound_frequency = 500  # Hz
+    spike_frequency = 350  # Hz
+    sim_duration_ms = 50
+    sound_angle = 90  # Angle of sound source in degrees
+
+    # TODO set cable properties here, check that all params are set here and shared correctly
+    # thin dendrites: 2 um diameter, thick: 4 um diameter
+
+    defaultclock.dt = dt
+    
+    # Get phase shift
+    phase_left, phase_right = calculate_arrival_times(sound_angle)
+
+    # TODO test jeffress model spike gen: spike_freq = sound_frequency
+    # Get input spike times
+    left_spike_indices, left_spike_times = binomial_spike_train(
+        N=1,
+        f_stim_Hz=sound_frequency,
+        f_pre_Hz=spike_frequency,
+        tmax_ms=sim_duration_ms,
+        phase=phase_left,
     )
-    neurons = create_neurons(morphologies)
-
-    # Create custom spike patterns (utility function could generate these)
-    left_spikes = [20, 40, 80]  # ms
-    right_spikes = [25, 50, 85]  # ms
-
-    input_left, input_right = create_input_groups(left_spikes, right_spikes)
-    synapses_left, synapses_right = connect_inputs_to_neurons(
-        neurons, input_left, input_right, synapse_weight=3 * mV
-    )
-    monitors = setup_monitors(neurons)
-
-    # Run simulation
-    net = run_simulation(
-        neurons,
-        (input_left, input_right),
-        (synapses_left, synapses_right),
-        monitors,
-        120 * ms,
+    right_spike_indices, right_spike_times = binomial_spike_train(
+        N=1,
+        f_stim_Hz=sound_frequency,
+        f_pre_Hz=spike_frequency,
+        tmax_ms=sim_duration_ms,
+        phase=phase_right,
     )
 
-    # Plot and print results
-    plot_results(monitors, dendrite_lengths, 3, "Custom spike pattern simulation")
-    print_simulation_info(dendrite_lengths, 3)
-
-    # Example 3: Using utility functions
-    example_with_utility_functions()
-
-
-def example_with_utility_functions():
-    """Example showing how to use utility functions with the modular Jeffress model."""
-    print("\n=== Example 3: Using utility functions for spike generation ===")
-
-    # Generate different spike patterns
-    base_pattern = generate_regular_spikes(interval=30, duration=150, start_time=10)
-    left_spikes = base_pattern
-    right_spikes = generate_delayed_spikes(base_pattern, delay=5)  # 5ms delay
-
-    print(f"Left spikes: {left_spikes}")
-    print(f"Right spikes: {right_spikes}")
+    # Create input groups
+    input_left = SpikeGeneratorGroup(
+        1, left_spike_indices, np.array(left_spike_times) * ms
+    )
+    input_right = SpikeGeneratorGroup(
+        1, right_spike_indices, np.array(right_spike_times) * ms
+    )
 
     # Create and simulate network
     network = create_jeffress_network(
         resolution=4,
         max_dendrite_len=80,
-        left_spike_times=left_spikes,
-        right_spike_times=right_spikes,
+        input_left=input_left,
+        input_right=input_right,
     )
-    simulate_jeffress_network(network, duration=180 * ms)
+
+    simulate_jeffress_network(network, duration=180 * ms, plot=True, verbose=True)
 
 
 if __name__ == "__main__":

@@ -156,50 +156,6 @@ def run_simulation(neurons, input_groups, synapses, monitors, duration=200 * ms)
     return net
 
 
-def plot_results(
-    monitors, dendrite_lengths, resolution, title="Voltage traces for somas"
-):
-    """Plot simulation results.
-
-    Args:
-        monitors (list): List of StateMonitor objects
-        dendrite_lengths (array): Array of dendrite lengths
-        resolution (int): Number of neurons
-        title (str): Plot title
-    """
-    plt.figure(figsize=(12, 8))
-
-    for i in range(resolution):
-        # soma is compartment 1 in each neuron
-        plt.plot(
-            monitors[i].t / ms,
-            monitors[i].v[1] / mV,
-            label=f"Soma {i} (L={dendrite_lengths[i]:.1f}, R={dendrite_lengths[resolution-1-i]:.1f})",
-        )
-
-    plt.xlabel("Time (ms)")
-    plt.ylabel("Voltage (mV)")
-    plt.legend()
-    plt.title(title)
-    plt.tight_layout()
-    plt.show()
-
-
-def print_simulation_info(dendrite_lengths, resolution):
-    """Print simulation information.
-
-    Args:
-        dendrite_lengths (array): Array of dendrite lengths
-        resolution (int): Number of neurons
-    """
-    print(f"Simulation completed. Plotted {resolution} soma voltage traces.")
-    print("Dendrite lengths (left, right) for each neuron:")
-    for i in range(resolution):
-        print(
-            f"  Neuron {i}: L={dendrite_lengths[i]:.1f}μm, R={dendrite_lengths[resolution-1-i]:.1f}μm"
-        )
-
-
 def create_jeffress_network(
     resolution=10, max_dendrite_len=100, input_left=None, input_right=None
 ):
@@ -260,12 +216,14 @@ def simulate_jeffress_network(network, duration=200 * ms, plot=True, verbose=Tru
     )
 
     if plot:
-        plot_results(
+        plot_jeffress_results(
             network["monitors"], network["dendrite_lengths"], network["resolution"]
         )
 
     if verbose:
-        print_simulation_info(network["dendrite_lengths"], network["resolution"])
+        print_jeffress_simulation_info(
+            network["dendrite_lengths"], network["resolution"]
+        )
 
     return net
 
@@ -284,7 +242,7 @@ def main():
     # thin dendrites: 2 um diameter, thick: 4 um diameter
 
     defaultclock.dt = dt
-    
+
     # Get phase shift
     phase_left, phase_right = calculate_arrival_times(sound_angle)
 

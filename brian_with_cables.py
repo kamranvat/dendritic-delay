@@ -1,18 +1,18 @@
 from brian2 import *
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import binomial_spike_train
+from utils import binomial_spike_train, calculate_arrival_times
 
 prefs.codegen.target = "numpy"
 defaultclock.dt = 0.01*ms
 
-def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0):
+def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, lengthleft=40, lengthright=40):
     start_scope()
 
     # Morphology
-    morpho = Soma(diameter=30*um)
-    morpho.L = Cylinder(length=50*um, diameter=2*um, n=1)
-    morpho.R = Cylinder(length=50*um, diameter=2*um, n=1)
+    morpho = Soma(diameter=20*um)
+    morpho.L = Cylinder(length=lengthleft*um, diameter=2*um, n=1)
+    morpho.R = Cylinder(length=lengthright*um, diameter=2*um, n=1)
 
     eqs = '''
     Im = gl * (El - v) : amp/meter**2
@@ -33,12 +33,30 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     )
 
     neuron.v = -65*mV
-    neuron.gl = 0.00005*siemens/cm**2
+    #neuron.gl = 0.001*siemens/cm**2  # τ = 1 ms (typical)
+    neuron.gl = 0.0005*siemens/cm**2 # τ = 2 ms (like paper)
     neuron.El = -65*mV
+
+    # calculate arrival times for both dendrites
+    time_left, time_right = calculate_arrival_times(sound_angle)
+    
+    # normalize the times to the cycle length with left as reference
+    itd = time_right - time_left
 
     # Binomial spike trains per dendrite
     left_i, left_t = binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=jitter_ms)
-    right_i, right_t = binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=1, jitter_ms=jitter_ms)
+    right_i, right_t = binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=itd, jitter_ms=jitter_ms)
+
+    # 2. Concatenate ALL spike times (could be negative)
+    all_times = np.concatenate([left_t, right_t])
+    min_time = np.min(all_times)
+
+    if min_time < 0:
+        # 3. Shift ALL spike times so the earliest is at 0 ms
+        left_t = np.array(left_t) - min_time
+        right_t = np.array(right_t) - min_time
+        # 4. Also increase tmax to accommodate this shift
+        tmax_ms = tmax_ms - min_time  # (since -min_time is positive if min_time is negative)
 
     input_left = SpikeGeneratorGroup(N, left_i, np.array(left_t)*ms)
     input_right = SpikeGeneratorGroup(N, right_i, np.array(right_t)*ms)
@@ -67,7 +85,7 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     plt.ylabel('v (mV)')
     plt.legend()
     plt.title('Stimulus on dendrites')
-    plt.show()
+    #plt.show()
 
     # Stack voltage traces in dendrite-soma-dendrite (vertical) order
     voltmap = np.vstack([M.v[1]/mV, M.v[0]/mV, M.v[2]/mV])
@@ -82,20 +100,25 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
         extent=[times[0], times[-1], 50, -50]
     )
     plt.colorbar(label='Voltage (mV)')
-    plt.yticks([50, 0, -50], ['right dend', 'soma', 'left dend'])
+    plt.yticks([lengthright, 0, lengthleft], ['right dendrite', 'Soma', 'left dendrite'])
     plt.xlabel('Time (ms)')
     plt.ylabel('Position (μm)')
     plt.title('Space–time voltage map')
-    plt.show()
+    #plt.show()
 
 
-#TODO: 
-# 1. use kamrans winkel to calculate the delay
-# 2. use values from the paper for phase = 0, frequency = ca. 500Hz, jitter = 0
-# frequency gegen response plotten
-# winkel gegen response plotten
 def main():
-    excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0)
+    #excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+
+    # iterate over different sound angles
+    for sound_angle in range(0, 360, 30):
+        print(f"Sound angle: {sound_angle}°")
+        excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
+
+    # iterate over different sound frequencies
+    #for sound_frequency in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]:
+    #    print(f"Sound frequency: {sound_frequency} Hz")
+    #    excite_both_dendrites(N=6, f_stim_Hz=sound_frequency, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
 
 if __name__ == "__main__":
     main()

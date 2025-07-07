@@ -6,18 +6,29 @@ from utils import binomial_spike_train, calculate_arrival_times
 prefs.codegen.target = "numpy"
 defaultclock.dt = 0.01*ms
 
-def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, lengthleft=40, lengthright=40):
+def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, lengthleft=58, lengthright=58):
     start_scope()
 
     # Morphology
+    diameter = 4*um
     morpho = Soma(diameter=20*um)
-    morpho.L = Cylinder(length=lengthleft*um, diameter=2*um, n=1)
-    morpho.R = Cylinder(length=lengthright*um, diameter=2*um, n=1)
+    morpho.L = Cylinder(length=lengthleft*um, diameter=diameter, n=1)
+    morpho.R = Cylinder(length=lengthright*um, diameter=diameter, n=1)
+
+    length = lengthright*um  # or lengthleft, lengthright depending which dendrite
+    area = np.pi * diameter * length   # ~251 um^2
+
+    w_e_total = 24*nS   # 22 nS per whole synapse event (as in the paper)
+    w_e = w_e_total / area       # units: S / um^2
+
+    tau_e = 0.3*ms  # synaptic time constant (as in the paper)#
 
     eqs = '''
-    Im = gl * (El - v) : amp/meter**2
+    Im = gl * (El - v) + ge * (Ee - v) : amp/meter**2
+    dge/dt = -ge/tau_e : siemens/meter**2 
     gl : siemens/meter**2
     El : volt
+    Ee : volt
     '''
 
     neuron = SpatialNeuron(
@@ -33,9 +44,10 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     )
 
     neuron.v = -65*mV
-    #neuron.gl = 0.001*siemens/cm**2  # τ = 1 ms (typical)
-    neuron.gl = 0.0005*siemens/cm**2 # τ = 2 ms (like paper)
+    neuron.gl = 0.001*siemens/cm**2  # τ = 1 ms (typical)
+    #neuron.gl = 0.0005*siemens/cm**2 # τ = 2 ms (like paper)
     neuron.El = -65*mV
+    neuron.Ee = 0*mV
 
     # calculate arrival times for both dendrites
     time_left, time_right = calculate_arrival_times(sound_angle)
@@ -61,10 +73,10 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     input_left = SpikeGeneratorGroup(N, left_i, np.array(left_t)*ms)
     input_right = SpikeGeneratorGroup(N, right_i, np.array(right_t)*ms)
 
-    syn_left = Synapses(input_left, neuron, on_pre='v_post += 3*mV')
+    syn_left = Synapses(input_left, neuron, on_pre='ge_post += w_e')
     syn_left.connect(i=range(N), j=1)
 
-    syn_right = Synapses(input_right, neuron, on_pre='v_post += 3*mV')
+    syn_right = Synapses(input_right, neuron, on_pre='ge_post += w_e')
     syn_right.connect(i=range(N), j=2)
 
     M = StateMonitor(neuron, 'v', record=True)
@@ -85,7 +97,7 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     plt.ylabel('v (mV)')
     plt.legend()
     plt.title('Stimulus on dendrites')
-    #plt.show()
+    plt.show()
 
     # Stack voltage traces in dendrite-soma-dendrite (vertical) order
     voltmap = np.vstack([M.v[1]/mV, M.v[0]/mV, M.v[2]/mV])
@@ -104,16 +116,16 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     plt.xlabel('Time (ms)')
     plt.ylabel('Position (μm)')
     plt.title('Space–time voltage map')
-    #plt.show()
+    plt.show()
 
 #TODO: conductance based or current based synapses?
 def main():
-    #excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+    excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
 
     # iterate over different sound angles
-    for sound_angle in range(0, 360, 30):
-        print(f"Sound angle: {sound_angle}°")
-        excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
+    #for sound_angle in range(0, 360, 30):
+    #    print(f"Sound angle: {sound_angle}°")
+    #    excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
 
     # iterate over different sound frequencies
     #for sound_frequency in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]:

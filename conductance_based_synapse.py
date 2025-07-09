@@ -144,7 +144,7 @@ def smooth_data(angles, max_voltages, window_size=5):
     return smoothed_voltages
 
 
-def different_angles(n_comp=10, lambda_um=200, left_index=1, right_index=None, min_angle=90, max_angle=270, step=1):
+def different_angles(n_comp=10, lambda_um=200, left_index=1, right_index=None, min_angle=90, max_angle=270, step=1, plot = True):
     max_voltages = []
     # iterate over different sound angles
     for sound_angle in range(min_angle,max_angle, step):
@@ -157,21 +157,22 @@ def different_angles(n_comp=10, lambda_um=200, left_index=1, right_index=None, m
     max_voltages = np.array(max_voltages)   # assumption from your simulation
 
     # Smooth the data using a moving average
-    smoothed_voltages = smooth_data(angles, max_voltages, window_size=10)
+    #smoothed_voltages = smooth_data(angles, max_voltages, window_size=10)
     # Smooth interpolation
     angles_smooth = np.linspace(angles.min(), angles.max(), 1000)
-    spline = make_interp_spline(angles, smoothed_voltages, k=10)
+    spline = make_interp_spline(angles, max_voltages, k=10)
     voltages_smooth = spline(angles_smooth)
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(min_angle, max_angle, step), max_voltages, marker='o')
-    plt.plot(angles_smooth, voltages_smooth, color='red', linewidth=2, label='Smooth fit')
-    plt.xlabel('Sound Angle (degrees)')
-    plt.ylabel('Max Soma Voltage (mV)')
-    plt.title('Max Soma Voltage vs Sound Angle')
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
+    if plot:
+        plt.figure(figsize=(10, 5))
+        plt.plot(range(min_angle, max_angle, step), max_voltages, marker='o')
+        plt.plot(angles_smooth, voltages_smooth, color='red', linewidth=2, label='Smooth fit')
+        plt.xlabel('Sound Angle (degrees)')
+        plt.ylabel('Max Soma Voltage (mV)')
+        plt.title('Max Soma Voltage vs Sound Angle')
+        plt.grid()
+        plt.tight_layout()
+        plt.show()
 
     return max_voltages
 
@@ -227,6 +228,43 @@ def do_polar_plot(left_index, right_index, n_comp=10, lambda_um=200, min_angle=9
 
     return max_voltages
 
+def plot_multiple_curves(n_comp=10, lambda_um=200, min_angle=90, max_angle=270, step=1):
+    plt.figure(figsize=(12, 6))
+    colors = plt.cm.tab10(np.linspace(0, 1, n_comp))  # Generate distinct colors for each curve
+
+    for left_index in range(1, n_comp + 1):
+        right_index = 2 * n_comp + 1 - left_index  # Calculate corresponding right index
+        print(f"Left index: {left_index}, Right index: {right_index}")
+
+        # Get max voltages for the current combination
+        max_voltages = different_angles(
+            n_comp=n_comp, lambda_um=lambda_um, left_index=left_index, right_index=right_index,
+            min_angle=min_angle, max_angle=max_angle, step=step, plot=False
+        )
+
+        # Smooth the data using moving average before interpolation
+        angles = np.arange(min_angle, max_angle, step)
+        #smoothed_voltages = smooth_data(angles, max_voltages, window_size=10)
+        angles_smooth = np.linspace(angles.min(), angles.max(), 1000)
+        spline = make_interp_spline(angles, max_voltages, k=3)
+        voltages_smooth = spline(angles_smooth)
+
+        # Only plot the smooth line, no markers!
+        plt.plot(
+            angles_smooth, voltages_smooth, color=colors[left_index - 1],
+            label=f'Left: {left_index}, Right: {right_index}'
+        )
+
+    plt.xlabel('Sound Angle (degrees)')
+    plt.ylabel('Max Soma Voltage (mV)')
+    plt.title('Interpolated Average Curves for Different Indices')
+    plt.legend(loc='upper right', fontsize='small')
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 def main():
 
@@ -238,7 +276,7 @@ def main():
 
     #excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, n_comp=n_comp, lambda_um=lambda_um)
 
-    max_voltages = different_angles(n_comp=n_comp, lambda_um=lambda_um, left_index=left_index, right_index=right_index)
+    #max_voltages = different_angles(n_comp=n_comp, lambda_um=lambda_um, left_index=left_index, right_index=right_index, min_angle=0, max_angle=360, step=1)
 
     #max_voltages = different_frequencies(min_frequency=50, max_frequency=1001, step=10)
     
@@ -248,6 +286,8 @@ def main():
 
     #    max_voltages = do_polar_plot(n_comp=n_comp, lambda_um=lambda_um, min_angle=0, max_angle=360, left_index=left_index, right_index=right_index)
     
+    plot_multiple_curves()
+
 
 if __name__ == "__main__":
     main()

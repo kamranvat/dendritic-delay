@@ -166,6 +166,29 @@ def print_jeffress_simulation_info(dendrite_lengths, resolution):
             f"  Neuron {i}: L={dendrite_lengths[i]:.1f}μm, R={dendrite_lengths[resolution-1-i]:.1f}μm"
         )
 
+def polar_bar_plot(
+    angles, values, title="Polar Bar Plot", xlabel="Angle (degrees)", ylabel="Value"
+):
+    """Create a polar bar plot.
+
+    Args:
+        angles (list): List of angles in degrees
+        values (list): List of values corresponding to the angles
+        title (str): Title of the plot
+        xlabel (str): Label for the x-axis
+        ylabel (str): Label for the y-axis
+    """
+    angles_rad = np.radians(angles)
+    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    bars = ax.bar(angles_rad, values, width=np.deg2rad(1), alpha=0.5, bottom=0.0)
+
+    ax.set_theta_zero_location('N')  # Optional: 0° at the top
+    ax.set_theta_direction(-1)       # Optional: clockwise
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    plt.show()
 
 if __name__ == "__main__":
     # test

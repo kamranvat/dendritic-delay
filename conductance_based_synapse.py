@@ -83,54 +83,80 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     spikemon = SpikeMonitor(neuron)
     run(tmax_ms*ms)
 
-    print("Max soma voltage:", np.max(M.v[1]/mV), "mV")
+    max_voltage = np.max(M.v[1]/mV)
+    print("Max soma voltage:", max_voltage, "mV")
     if spikemon.count[0] > 0:
         print("Soma spiked!")
         print("Spike times (ms):", spikemon.t/ms)
     else:
         print("Soma did NOT spike.")
 
-    plt.plot(M.t/ms, M.v[1]/mV, label='dendL')
-    plt.plot(M.t/ms, M.v[0]/mV, label='soma')
-    plt.plot(M.t/ms, M.v[2]/mV, label='dendR')
-    plt.xlabel('Time (ms)')
-    plt.ylabel('v (mV)')
-    plt.legend()
-    plt.title('Stimulus on dendrites')
-    plt.show()
+    #plt.plot(M.t/ms, M.v[1]/mV, label='dendL')
+    #plt.plot(M.t/ms, M.v[0]/mV, label='soma')
+    #plt.plot(M.t/ms, M.v[2]/mV, label='dendR')
+    #plt.xlabel('Time (ms)')
+    #plt.ylabel('v (mV)')
+    #plt.legend()
+    #plt.title('Stimulus on dendrites')
+    #plt.show()
 
     # Stack voltage traces in dendrite-soma-dendrite (vertical) order
     voltmap = np.vstack([M.v[1]/mV, M.v[0]/mV, M.v[2]/mV])
     times = M.t / ms
 
-    plt.figure(figsize=(10, 4))
-    plt.imshow(
-        voltmap,
-        aspect='auto',
-        cmap='viridis',
-        # Y runs top (right) to bottom (left), spanning the actual distance
-        extent=[times[0], times[-1], 50, -50]
-    )
-    plt.colorbar(label='Voltage (mV)')
-    plt.yticks([lengthright, 0, lengthleft], ['right dendrite', 'Soma', 'left dendrite'])
-    plt.xlabel('Time (ms)')
-    plt.ylabel('Position (μm)')
-    plt.title('Space–time voltage map')
-    plt.show()
+    #plt.figure(figsize=(10, 4))
+    #plt.imshow(
+    #    voltmap,
+    #    aspect='auto',
+    #    cmap='viridis',
+    #    # Y runs top (right) to bottom (left), spanning the actual distance
+    #    extent=[times[0], times[-1], 50, -50]
+    #)
+    #plt.colorbar(label='Voltage (mV)')
+    #plt.yticks([lengthright, 0, lengthleft], ['right dendrite', 'Soma', 'left dendrite'])
+    #plt.xlabel('Time (ms)')
+    #plt.ylabel('Position (μm)')
+    #plt.title('Space–time voltage map')
+    #plt.show()
+
+    return max_voltage
 
 #TODO: conductance based or current based synapses?
 def main():
     excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
 
+    max_voltages = []
     # iterate over different sound angles
-    #for sound_angle in range(0, 360, 30):
+    #for sound_angle in range(0, 360, 1):
     #    print(f"Sound angle: {sound_angle}°")
-    #    excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
+    #    max_v = excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
+    #    max_voltages.append(max_v)
 
     # iterate over different sound frequencies
-    #for sound_frequency in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]:
-    #    print(f"Sound frequency: {sound_frequency} Hz")
-    #    excite_both_dendrites(N=6, f_stim_Hz=sound_frequency, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+    for sound_frequency in range(50, 1001, 10):        
+        print(f"Sound frequency: {sound_frequency} Hz")
+        max_v = excite_both_dendrites(N=6, f_stim_Hz=sound_frequency, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+        max_voltages.append(max_v)
+
+    # Plot max voltages for different sound angles
+    """plt.figure(figsize=(10, 5))
+    plt.plot(range(0, 360, 1), max_voltages, marker='o')
+    plt.xlabel('Sound Angle (degrees)')
+    plt.ylabel('Max Soma Voltage (mV)')
+    plt.title('Max Soma Voltage vs Sound Angle')
+    plt.grid()
+    plt.tight_layout()
+    plt.show()"""
+
+    # plot max voltages for different sound frequencies
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(50, 1001, 10), max_voltages, marker='o')
+    plt.xlabel('Sound Frequency (Hz)')
+    plt.ylabel('Max Soma Voltage (mV)')
+    plt.title('Max Soma Voltage vs Sound Frequency')
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     main()

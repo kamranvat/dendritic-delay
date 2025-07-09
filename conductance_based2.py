@@ -45,7 +45,9 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
     )
 
     neuron.v = -65*mV
-    neuron.gl = 0.0005*siemens/cm**2
+    #neuron.gl = 0.0005*siemens/cm**2
+    neuron.gl = 0.001*siemens/cm**2
+
     neuron.El = -62.5*mV
     neuron.gsyn = 0*siemens/cm**2
     neuron.Esyn = 0*mV

@@ -1,34 +1,35 @@
 from brian2 import *
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import binomial_spike_train, calculate_arrival_times
+from utils import binomial_spike_train, calculate_arrival_times, polar_bar_plot
+from scipy.interpolate import make_interp_spline
 
 prefs.codegen.target = "numpy"
 defaultclock.dt = 0.01*ms
 
-def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, lengthleft=58, lengthright=58):
+def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0,
+                         n_comp=10, lambda_um=200, left_comp_index=None, right_comp_index=None, plot = False):
     start_scope()
 
-    # Morphology
-    diameter = 4*um
+    # Key morphology
+    lambda_ = lambda_um * um
+    compartment_length = 0.05 * lambda_
+    dend_length = n_comp * compartment_length
+    diameter = 2*um  # From paper
+
     morpho = Soma(diameter=20*um)
-    morpho.L = Cylinder(length=lengthleft*um, diameter=diameter, n=1)
-    morpho.R = Cylinder(length=lengthright*um, diameter=diameter, n=1)
+    morpho.L = Cylinder(length=dend_length, diameter=diameter, n=n_comp)
+    morpho.R = Cylinder(length=dend_length, diameter=diameter, n=n_comp)
 
-    length = lengthright*um  # or lengthleft, lengthright depending which dendrite
-    area = np.pi * diameter * length   # ~251 um^2
-
-    w_e_total = 24*nS   # 22 nS per whole synapse event (as in the paper)
-    w_e = w_e_total / area       # units: S / um^2
-
-    tau_e = 0.3*ms  # synaptic time constant (as in the paper)#
+    #show()
 
     eqs = '''
-    Im = gl * (El - v) + ge * (Ee - v) : amp/meter**2
-    dge/dt = -ge/tau_e : siemens/meter**2 
+    Im = gl * (El - v) + gsyn*(Esyn-v) : amp/meter**2
+    dgsyn/dt = -gsyn / tau_syn : siemens/meter**2
     gl : siemens/meter**2
     El : volt
-    Ee : volt
+    Esyn : volt
+    tau_syn : second (shared)
     '''
 
     neuron = SpatialNeuron(
@@ -39,124 +40,214 @@ def excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_m
         reset='v = -65*mV',
         refractory='2*ms',
         Cm=1*uF/cm**2,
-        Ri=100*ohm*cm,
+        Ri=200*ohm*cm,
         method='exponential_euler',
     )
 
     neuron.v = -65*mV
-    neuron.gl = 0.001*siemens/cm**2  # τ = 1 ms (typical)
-    #neuron.gl = 0.0005*siemens/cm**2 # τ = 2 ms (like paper)
-    neuron.El = -65*mV
-    neuron.Ee = 0*mV
+    neuron.gl = 0.0005*siemens/cm**2
+    neuron.El = -62.5*mV
+    neuron.gsyn = 0*siemens/cm**2
+    neuron.Esyn = 0*mV
+    neuron.tau_syn = 0.5*ms
+    w_syn = 14*nS  # (14-26 in paper)
 
-    # calculate arrival times for both dendrites
+
+
+    # Calculate arrival times for both dendrites
     time_left, time_right = calculate_arrival_times(sound_angle)
-    
-    # normalize the times to the cycle length with left as reference
     itd = time_right - time_left
 
-    # Binomial spike trains per dendrite
     left_i, left_t = binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=jitter_ms)
     right_i, right_t = binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=itd, jitter_ms=jitter_ms)
 
-    # 2. Concatenate ALL spike times (could be negative)
+    # Shift times if negative
     all_times = np.concatenate([left_t, right_t])
     min_time = np.min(all_times)
-
     if min_time < 0:
-        # 3. Shift ALL spike times so the earliest is at 0 ms
-        left_t = np.array(left_t) - min_time
-        right_t = np.array(right_t) - min_time
-        # 4. Also increase tmax to accommodate this shift
-        tmax_ms = tmax_ms - min_time  # (since -min_time is positive if min_time is negative)
+        left_t, right_t = left_t - min_time, right_t - min_time
+        tmax_ms = tmax_ms - min_time
 
-    input_left = SpikeGeneratorGroup(N, left_i, np.array(left_t)*ms)
-    input_right = SpikeGeneratorGroup(N, right_i, np.array(right_t)*ms)
+    input_left = SpikeGeneratorGroup(N, left_i, left_t*ms)
+    input_right = SpikeGeneratorGroup(N, right_i, right_t*ms)
 
-    syn_left = Synapses(input_left, neuron, on_pre='ge_post += w_e')
-    syn_left.connect(i=range(N), j=1)
+    # Compartment centers (for info/indices)
+    compartment_centers = np.linspace(compartment_length/2, dend_length - compartment_length/2, n_comp)
+    syn_dist = 0.1 * lambda_   # 0.1 lambda as in paper
 
-    syn_right = Synapses(input_right, neuron, on_pre='ge_post += w_e')
-    syn_right.connect(i=range(N), j=2)
+    # Defaults: closest to 0.1 lambda in each dendrite
+    default_left = 1 + np.argmin(np.abs(compartment_centers - syn_dist))
+    default_right = n_comp + 1 + np.argmin(np.abs(compartment_centers - syn_dist))
+    left_index = default_left if left_comp_index is None else left_comp_index
+    right_index = default_right if right_comp_index is None else right_comp_index
+
+    # Synapse connections
+    syn_left = Synapses(input_left, neuron, on_pre='gsyn_post += w_syn / area_post')
+    syn_left.connect(i=range(N), j=left_index)
+    syn_right = Synapses(input_right, neuron, on_pre='gsyn_post += w_syn / area_post')
+    syn_right.connect(i=range(N), j=right_index)
 
     M = StateMonitor(neuron, 'v', record=True)
     spikemon = SpikeMonitor(neuron)
     run(tmax_ms*ms)
 
-    max_voltage = np.max(M.v[1]/mV)
-    print("Max soma voltage:", max_voltage, "mV")
+    print(f"[INFO] n_comp={n_comp}, lambda={lambda_um} um, dendrite length={dend_length/um:.1f} um, left_index={left_index}, right_index={right_index}")
+    max_v = np.max(M.v[0]/mV)
+    print("Max soma voltage:", max_v, "mV")
     if spikemon.count[0] > 0:
         print("Soma spiked!")
         print("Spike times (ms):", spikemon.t/ms)
     else:
         print("Soma did NOT spike.")
 
-    #plt.plot(M.t/ms, M.v[1]/mV, label='dendL')
-    #plt.plot(M.t/ms, M.v[0]/mV, label='soma')
-    #plt.plot(M.t/ms, M.v[2]/mV, label='dendR')
-    #plt.xlabel('Time (ms)')
-    #plt.ylabel('v (mV)')
-    #plt.legend()
-    #plt.title('Stimulus on dendrites')
-    #plt.show()
+    if plot:
+        plt.plot(M.t/ms, M.v[left_index]/mV, label=f'left dend {left_index}')
+        plt.plot(M.t/ms, M.v[0]/mV, label='soma')
+        plt.plot(M.t/ms, M.v[right_index]/mV, label=f'right dend {right_index}')
+        plt.xlabel('Time (ms)')
+        plt.ylabel('v (mV)')
+        plt.legend()
+        plt.title('Stimulus on dendrites')
+        #plt.show()
 
-    # Stack voltage traces in dendrite-soma-dendrite (vertical) order
-    voltmap = np.vstack([M.v[1]/mV, M.v[0]/mV, M.v[2]/mV])
-    times = M.t / ms
+        # Space–time map
+        voltmap = np.vstack([
+            M.v[n_comp+1:][::-1]/mV,        # right dendrite, distal->proximal
+            M.v[0][np.newaxis]/mV,          # soma
+            M.v[1:n_comp+1]/mV              # left dendrite, prox->distal
+        ])
+        times = M.t / ms
 
-    #plt.figure(figsize=(10, 4))
-    #plt.imshow(
-    #    voltmap,
-    #    aspect='auto',
-    #    cmap='viridis',
-    #    # Y runs top (right) to bottom (left), spanning the actual distance
-    #    extent=[times[0], times[-1], 50, -50]
-    #)
-    #plt.colorbar(label='Voltage (mV)')
-    #plt.yticks([lengthright, 0, lengthleft], ['right dendrite', 'Soma', 'left dendrite'])
-    #plt.xlabel('Time (ms)')
-    #plt.ylabel('Position (μm)')
-    #plt.title('Space–time voltage map')
-    #plt.show()
+        plt.figure(figsize=(10, 4))
+        plt.imshow(
+            voltmap, aspect='auto', cmap='viridis',
+            extent=[times[0], times[-1], dend_length/um, -dend_length/um]
+        )
+        plt.colorbar(label='Voltage (mV)')
+        plt.yticks([left_index, 0, right_index], ['right dendrite', 'Soma', 'left dendrite'])
+        plt.xlabel('Time (ms)')
+        plt.ylabel('Position (μm)')
+        plt.title('Space–time voltage map')
+        #plt.show()
 
-    return max_voltage
+    return max_v
 
-#TODO: conductance based or current based synapses?
-def main():
-    excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+def smooth_data(angles, max_voltages, window_size=5):
+    """Smooth data using a moving average over nearby points."""
+    smoothed_voltages = np.zeros_like(max_voltages)
+    for i in range(len(max_voltages)):
+        # Define the window range
+        start = max(0, i - window_size // 2)
+        end = min(len(max_voltages), i + window_size // 2 + 1)
+        # Average over the window
+        smoothed_voltages[i] = np.mean(max_voltages[start:end])
+    return smoothed_voltages
 
+
+def different_angles(n_comp=10, lambda_um=200, left_index=1, right_index=None, min_angle=90, max_angle=270, step=1):
     max_voltages = []
     # iterate over different sound angles
-    #for sound_angle in range(0, 360, 1):
-    #    print(f"Sound angle: {sound_angle}°")
-    #    max_v = excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle)
-    #    max_voltages.append(max_v)
-
-    # iterate over different sound frequencies
-    for sound_frequency in range(50, 1001, 10):        
-        print(f"Sound frequency: {sound_frequency} Hz")
-        max_v = excite_both_dendrites(N=6, f_stim_Hz=sound_frequency, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+    for sound_angle in range(min_angle,max_angle, step):
+        print(f"Sound angle: {sound_angle}°")
+        max_v = excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=sound_angle, n_comp=n_comp, lambda_um=lambda_um, left_comp_index=left_index,
+                right_comp_index=right_index)
         max_voltages.append(max_v)
 
-    # Plot max voltages for different sound angles
-    """plt.figure(figsize=(10, 5))
-    plt.plot(range(0, 360, 1), max_voltages, marker='o')
+    angles = np.arange(min_angle, max_angle, step)           # or whatever your angle array is
+    max_voltages = np.array(max_voltages)   # assumption from your simulation
+
+    # Smooth the data using a moving average
+    smoothed_voltages = smooth_data(angles, max_voltages, window_size=10)
+    # Smooth interpolation
+    angles_smooth = np.linspace(angles.min(), angles.max(), 1000)
+    spline = make_interp_spline(angles, smoothed_voltages, k=10)
+    voltages_smooth = spline(angles_smooth)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(min_angle, max_angle, step), max_voltages, marker='o')
+    plt.plot(angles_smooth, voltages_smooth, color='red', linewidth=2, label='Smooth fit')
     plt.xlabel('Sound Angle (degrees)')
     plt.ylabel('Max Soma Voltage (mV)')
     plt.title('Max Soma Voltage vs Sound Angle')
     plt.grid()
     plt.tight_layout()
-    plt.show()"""
+    plt.show()
+
+    return max_voltages
+
+def different_frequencies(min_frequency=50, max_frequency=1001, step=10):
+    
+    max_voltages = []
+    # iterate over different sound frequencies
+    for sound_frequency in range(min_frequency, max_frequency, step):        
+        print(f"Sound frequency: {sound_frequency} Hz")
+        max_v = excite_both_dendrites(N=6, f_stim_Hz=sound_frequency, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0)
+        max_voltages.append(max_v)
+
+    
 
     # plot max voltages for different sound frequencies
     plt.figure(figsize=(10, 5))
-    plt.plot(range(50, 1001, 10), max_voltages, marker='o')
+    plt.plot(range(min_frequency, max_frequency, 10), max_voltages, marker='o')
     plt.xlabel('Sound Frequency (Hz)')
     plt.ylabel('Max Soma Voltage (mV)')
     plt.title('Max Soma Voltage vs Sound Frequency')
     plt.grid()
     plt.tight_layout()
     plt.show()
+
+    return max_voltages
+
+def do_polar_plot(left_index, right_index, n_comp=10, lambda_um=200, min_angle=90, max_angle=270, step=1):
+    angles = []
+    max_voltages = []
+
+    print(f"Left dendrite compartment: {left_index}, Right dendrite compartment: {right_index}")
+
+    # Iterate over sound angles
+    for angle in range(min_angle, max_angle, step):
+        print(f"Sound angle: {angle}°")
+            
+        max_v = excite_both_dendrites(
+            N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=angle,
+            n_comp=n_comp, lambda_um=lambda_um,
+            left_comp_index=left_index,
+            right_comp_index=right_index
+        )
+        max_voltages.append(max_v)
+        angles.append(angle)
+
+    # Plot max voltages for different sound angles
+    polar_bar_plot(
+        angles, max_voltages,
+        title=f'Max Soma Voltage vs Sound Angle (Left: {left_index}, Right: {right_index})',
+        xlabel='Sound Angle (degrees)',
+        ylabel='Max Soma Voltage (mV)'
+    )
+
+    return max_voltages
+
+
+def main():
+
+    n_comp = 10
+    lambda_um = 200  # from paper
+    left_index= 1
+    right_index= 2 * n_comp + 1 - left_index
+    max_index = n_comp+1
+
+    #excite_both_dendrites(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=20, jitter_ms=0, sound_angle=0, n_comp=n_comp, lambda_um=lambda_um)
+
+    max_voltages = different_angles(n_comp=n_comp, lambda_um=lambda_um, left_index=left_index, right_index=right_index)
+
+    #max_voltages = different_frequencies(min_frequency=50, max_frequency=1001, step=10)
+    
+    #for l in range(1, 2):
+    #    left_index = l
+    #    right_index = 2 * n_comp + 1 - l
+
+    #    max_voltages = do_polar_plot(n_comp=n_comp, lambda_um=lambda_um, min_angle=0, max_angle=360, left_index=left_index, right_index=right_index)
+    
 
 if __name__ == "__main__":
     main()

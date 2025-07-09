@@ -167,7 +167,7 @@ def print_jeffress_simulation_info(dendrite_lengths, resolution):
         )
 
 def polar_bar_plot(
-    angles, values, title="Polar Bar Plot", xlabel="Angle (degrees)", ylabel="Value"
+    angles, values, title="Polar Bar Plot", xlabel="Angle (degrees)", ylabel="Value", threshold = -20.0
 ):
     """Create a polar bar plot.
 
@@ -178,9 +178,19 @@ def polar_bar_plot(
         xlabel (str): Label for the x-axis
         ylabel (str): Label for the y-axis
     """
+    # when a threshold is crossed, plot this value in a different color
+    offset = -1 * np.min(values) # add to avoid negative bars
+    values = [v + offset for v in values]  # Adjust values to avoid negative bars
     angles_rad = np.radians(angles)
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-    bars = ax.bar(angles_rad, values, width=np.deg2rad(1), alpha=0.5, bottom=0.0)
+    bars = ax.bar(
+        angles_rad,
+        values,
+        width=np.deg2rad(1),
+        alpha=0.5,
+        bottom=0.0,
+        color=["red" if v - offset > threshold else "blue" for v in values]
+    )
 
     ax.set_theta_zero_location('N')  # Optional: 0° at the top
     ax.set_theta_direction(-1)       # Optional: clockwise

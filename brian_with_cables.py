@@ -1,7 +1,7 @@
 from brian2 import *
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import binomial_spike_train, calculate_arrival_times
+from utils import binomial_spike_train, calculate_arrival_times, polar_bar_plot
 
 prefs.codegen.target = "numpy"
 defaultclock.dt = 0.01*ms

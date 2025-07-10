@@ -603,7 +603,7 @@ def plot_multiple_curves(
     plt.show()
 
 
-def calculate_thresholds(max_voltages, percentile=0.75):
+def calculate_threshold(max_voltages, percentile=0.75):
     """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
     sorted_voltages = np.sort(max_voltages)
     cutoff = int(len(sorted_voltages) * percentile)
@@ -612,9 +612,9 @@ def calculate_thresholds(max_voltages, percentile=0.75):
 
 
 def load_thresholds(filepath, l=None):
-    """Load thresholds from a JSON file."""
+    """Load thresholds from a JSON file. If l is provided, return the threshold for that left index, otherwise return all thresholds."""
     if not os.path.exists(filepath):
-        print(f"Thresholds file {filepath} does not exist.")
+        print(f"[WARNING] Thresholds file {filepath} does not exist.")
         return {}
 
     with open(filepath, "r") as f:
@@ -623,7 +623,7 @@ def load_thresholds(filepath, l=None):
             threshold = thresholds.get(str(l), None) if l is not None else thresholds
         except json.JSONDecodeError:
             thresholds = {}
-            print("JSON file is empty or invalid. Starting fresh.")
+            print("[WARNING] JSON file is empty or invalid. Starting fresh.")
 
     return threshold
 
@@ -636,16 +636,16 @@ def main():
     min_angle = 90
     angle = 0
     max_angle = 270
-    step = 1
-    begin = 11
-    end = 11
+    step = 3
+    begin = 1
+    end = 1
     thresh_filepath = Path(__file__).parent / "thresholds.json"
     response_filepath = Path(__file__).parent / "response_data.json"
 
     # Set flags for different functionalities:
     do_single_combo = False  # needs angle, n_comp, lambda_um, left_index, right_index
-    calc_thresholds = True  # needs begin, end, filepath, n_comp, lambda_um, min_angle, max_angle, step
-    simulate_response = False  # if False, loads from file. needs left_index, right_index, n_comp, lambda_um, min_angle, max_angle, step
+    calc_thresholds = False  # needs begin, end, filepath, n_comp, lambda_um, min_angle, max_angle, step
+    simulate_response = True  # if False, loads from file. needs left_index, right_index, n_comp, lambda_um, min_angle, max_angle, step
     polar_plot_spikes = True  # needs min_angle, max_angle
     polar_plot_max_voltages = (
         True  # needs min_angle, max_angle, left_index, right_index, n_comp, lambda_um
@@ -653,6 +653,31 @@ def main():
     multiple_curves = (
         False  # needs filepath, n_comp, lambda_um, min_angle, max_angle, begin, end
     )
+    if calc_thresholds:
+        thresholds = load_thresholds(thresh_filepath)  # might print that no file exists
+
+        for l in range(begin, end + 1):
+            left_index = l
+            right_index = 2 * n_comp + 1 - l
+
+            max_volts = different_angles(
+                n_comp=n_comp,
+                lambda_um=lambda_um,
+                left_index=left_index,
+                right_index=right_index,
+                min_angle=min_angle,
+                max_angle=max_angle,
+                step=step,
+                plot=False,
+            )
+            thresholds[l] = calculate_threshold(
+                max_volts, percentile=0.75
+            )  # TODO unify convention: we load threshold at left_index! not like this.
+
+            with open(thresh_filepath, "w") as f:
+                json.dump(thresholds, f)
+    else:
+        threshold = load_thresholds(thresh_filepath)
 
     if simulate_response:
         # Simulate response for a single combination of left and right indices
@@ -664,6 +689,7 @@ def main():
             min_angle=min_angle,
             max_angle=max_angle,
             step=step,
+            threshold=load_thresholds(thresh_filepath, l=left_index),
         )
         store_response_per_angle(
             angles, all_voltages, max_voltages, spike_counts, filepath=response_filepath
@@ -682,7 +708,6 @@ def main():
             )
 
     if do_single_combo:
-        threshold = load_thresholds(thresh_filepath, l=left_index)
         excite_both_dendrites(
             N=6,
             f_stim_Hz=500,
@@ -703,38 +728,11 @@ def main():
 
     # _, _ = different_frequencies(min_frequency=50, max_frequency=1001, step=10)
 
-    if calc_thresholds:
-        with open(thresh_filepath, "r") as f:
-            try:
-                thresholds = json.load(f)
-            except json.JSONDecodeError:
-                thresholds = {}
-                print("JSON file is empty or invalid. Starting fresh.")
-        for l in range(begin, end + 1):
-            left_index = l
-            right_index = 2 * n_comp + 1 - l
-
-            max_volts = different_angles(
-                n_comp=n_comp,
-                lambda_um=lambda_um,
-                left_index=left_index,
-                right_index=right_index,
-                min_angle=min_angle,
-                max_angle=max_angle,
-                step=step,
-                plot=False,
-            )
-            thresholds[l] = calculate_thresholds(max_volts, percentile=0.75)
-
-            with open(thresh_filepath, "w") as f:
-                json.dump(thresholds, f)
-
     if polar_plot_spikes:
         # for each neuron, get spike counts for each angle
         for l in range(begin, end + 1):
             left_index = l
             right_index = 2 * n_comp + 1 - l
-            threshold = load_thresholds(thresh_filepath, l=l)
 
             # Plot max voltages for different sound angles
             polar_bar_plot(
@@ -750,7 +748,6 @@ def main():
             left_index = l
             right_index = 2 * n_comp + 1 - l
             # get the threshold for this l from json
-            threshold = load_thresholds(thresh_filepath, l=l)
 
             polar_bar_plot(
                 angles,

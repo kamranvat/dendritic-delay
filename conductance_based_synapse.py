@@ -475,7 +475,7 @@ def plot_multiple_curves(
 
 
 def main():
-    # Set parameters for the simulation
+    # parameters
     n_comp = 11
     lambda_um = 200  # from paper
     left_start_index = 7
@@ -488,26 +488,28 @@ def main():
     thresh_filepath = Path(__file__).parent / "thresholds.json"
     response_filepath = Path(__file__).parent / "response_data.json"
 
-    # Assertions
+    # assertions
     assert left_start_index <= left_end_index, "left_start_index index must be less than or equal to end index."
     assert left_end_index <= n_comp, "left_end_index index must be less than or equal to n_comp."
 
-    # Set flags for different functionalities:
-    do_single_combo = False  # needs angle, n_comp, lambda_um, left_index, right_index
-    calc_thresholds = False  # needs left_start_index, left_end_index, filepath, n_comp, lambda_um, min_angle, max_angle, step
-    simulate_response = False  # if False, loads from file. needs left_index, right_index, n_comp, lambda_um, min_angle, max_angle, step
-    polar_plot_spikes = True  # needs min_angle, max_angle
-    polar_plot_max_voltages = (
-        True  # needs min_angle, max_angle, left_index, right_index, n_comp, lambda_um
-    )
+    # flags
+    # computation:
+    calc_thresholds = False  # if False, loads from file.
+    simulate_response = False  # if False, loads from file. 
+    # single neuron plots:
+    do_single_combo = False  
+    polar_plot_spikes = True  
+    polar_plot_max_voltages = True  
+    # multi-neuron plots:
     polar_plot_v_grid = True
     polar_plot_spk_grid = True
     polar_plot_v_multi = True
     polar_plot_spk_multi = True
-    
-    multiple_curves = (
-        False  # needs filepath, n_comp, lambda_um, min_angle, max_angle, left_start_index, left_end_index
-    )
+    multiple_curves = False  
+
+    # data collection for multi-neuron plots:
+    all_voltage_data = {}
+    all_spike_data = {}
 
     # Run the simulation and analysis based on the flags
     for left_index in range(left_start_index, left_end_index + 1):
@@ -614,6 +616,22 @@ def main():
                 left_end_index=left_end_index,
             )
 
+        # Store data for multi/grid plots
+        if angles is not None and max_voltages is not None:
+            neuron_label = f"L{left_index}_R{right_index - n_comp}"
+            all_voltage_data[neuron_label] = (angles, max_voltages)
+            all_spike_data[neuron_label] = (angles, spike_counts)
+
+
+    # Plot multi-neuron data
+    if polar_plot_v_multi and all_voltage_data:
+        polar_bar_plot_multi(all_voltage_data, title="All Neurons - Max Voltage")
+    if polar_plot_spk_multi and all_spike_data:
+        polar_bar_plot_multi(all_spike_data, title="All Neurons - Spike Count")
+    if polar_plot_v_grid:
+        polar_bar_plot_grid(all_voltage_data, title="All Neurons - Max Voltage")
+    if polar_plot_spk_grid:
+        polar_bar_plot_grid(all_spike_data, title="All Neurons - Spike Count")
 
 if __name__ == "__main__":
     main()

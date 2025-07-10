@@ -1,7 +1,7 @@
 from brian2 import *
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import binomial_spike_train, calculate_arrival_times, polar_bar_plot
+from utils import *
 from scipy.interpolate import make_interp_spline
 from numpy import interp
 import json
@@ -342,18 +342,6 @@ def excite_one_dendrite(
     return max_v
 
 
-def smooth_data(angles, max_voltages, window_size=5):
-    """Smooth data using a moving average over nearby points."""
-    smoothed_voltages = np.zeros_like(max_voltages)
-    for i in range(len(max_voltages)):
-        # Define the window range
-        start = max(0, i - window_size // 2)
-        end = min(len(max_voltages), i + window_size // 2 + 1)
-        # Average over the window
-        smoothed_voltages[i] = np.mean(max_voltages[start:end])
-    return smoothed_voltages
-
-
 def different_angles(
     n_comp=10,
     lambda_um=200,
@@ -482,55 +470,6 @@ def simulate_response_per_angle(
     return angles, all_voltages, max_voltages, spike_counts
 
 
-def store_response_per_angle(
-    angles, all_voltages, max_voltages, spike_counts, filepath=None
-):
-    response_data = {}
-    """Store the response data in a JSON file."""
-    if filepath is None:
-        filepath = Path(__file__).parent / "response_data.json"
-
-    for i, angle in enumerate(angles):
-        response_data[str(angle)] = {
-            "max_voltage": max_voltages[i],
-            "spike_count": int(
-                spike_counts[i]
-            ),  # Convert to int for JSON serialization
-            "all_voltages": all_voltages[i].tolist(),  # Convert numpy array to list
-        }
-
-    with open(filepath, "w") as f:
-        json.dump(response_data, f, indent=4)
-
-    print(f"Response data stored in {filepath}")
-
-
-def load_response_per_angle(response_filepath=None, min_angle=1, max_angle=360, step=1):
-    """Load response data from a JSON file."""
-    if not Path(response_filepath).exists():
-        print(f"Response data file {response_filepath} does not exist.")
-        return
-    with open(response_filepath, "r") as f:
-        angles, all_voltages, max_voltages, spike_counts = [], [], [], []
-        try:
-            response_data = json.load(f)
-            for angle in range(min_angle, max_angle, step):
-                if str(angle) in response_data:
-                    data = response_data[str(angle)]
-                    angles.append(angle)
-                    all_voltages.append(np.array(data["all_voltages"]))
-                    max_voltages.append(data["max_voltage"])
-                    spike_counts.append(data["spike_count"])
-                else:
-                    print(f"No data for angle {angle}° in response file.")
-        except json.JSONDecodeError:
-            print(
-                "Response data file is empty or invalid. Please run the simulation first."
-            )
-            return
-    return angles, all_voltages, max_voltages, spike_counts
-
-
 def plot_multiple_curves(
     n_comp=11,
     lambda_um=200,
@@ -602,30 +541,6 @@ def plot_multiple_curves(
     plt.tight_layout()
     plt.show()
 
-
-def calculate_thresholds(max_voltages, percentile=0.75):
-    """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
-    sorted_voltages = np.sort(max_voltages)
-    cutoff = int(len(sorted_voltages) * percentile)
-    threshold = sorted_voltages[cutoff]
-    return threshold
-
-
-def load_thresholds(filepath, l=None):
-    """Load thresholds from a JSON file."""
-    if not os.path.exists(filepath):
-        print(f"Thresholds file {filepath} does not exist.")
-        return {}
-
-    with open(filepath, "r") as f:
-        try:
-            thresholds = json.load(f)
-            threshold = thresholds.get(str(l), None) if l is not None else thresholds
-        except json.JSONDecodeError:
-            thresholds = {}
-            print("JSON file is empty or invalid. Starting fresh.")
-
-    return threshold
 
 
 def main():
@@ -724,7 +639,7 @@ def main():
                 step=step,
                 plot=False,
             )
-            thresholds[l] = calculate_thresholds(max_volts, percentile=0.75)
+            thresholds[l] = calculate_threshold(max_volts, percentile=0.75)
 
             with open(thresh_filepath, "w") as f:
                 json.dump(thresholds, f)

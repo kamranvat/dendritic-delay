@@ -1,7 +1,9 @@
 import math
 import numpy as np
 from brian2 import *
-
+import matplotlib.pyplot as plt
+from pathlib import Path
+import json
 
 def euclidean(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
@@ -44,67 +46,6 @@ def calculate_arrival_times(
     time_right = dist_right / speed_of_sound * 1000
 
     return (time_left, time_right)
-
-
-# Utility functions for generating spike distributions
-def generate_poisson_spikes(rate, duration, n_trials=1, seed=None):
-    """Generate Poisson spike trains.
-
-    Args:
-        rate (float): Firing rate in Hz
-        duration (float): Duration in ms
-        n_trials (int): Number of spike trains
-        seed (int): Random seed for reproducibility
-
-    Returns:
-        list: List of spike times in ms
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    spike_times = []
-    for trial in range(n_trials):
-        # Generate inter-spike intervals from exponential distribution
-        intervals = np.random.exponential(
-            1000.0 / rate, size=int(rate * duration / 1000 * 3)
-        )  # overestimate
-        times = np.cumsum(intervals)
-        times = times[times < duration]  # keep only spikes within duration
-        spike_times.extend(times)
-
-    return sorted(spike_times)
-
-
-def generate_regular_spikes(interval, duration, start_time=0):
-    """Generate regular spike train.
-
-    Args:
-        interval (float): Inter-spike interval in ms
-        duration (float): Duration in ms
-        start_time (float): First spike time in ms
-
-    Returns:
-        list: List of spike times in ms
-    """
-    spike_times = []
-    t = start_time
-    while t < duration:
-        spike_times.append(t)
-        t += interval
-    return spike_times
-
-
-def generate_delayed_spikes(base_spikes, delay):
-    """Generate delayed version of spike pattern.
-
-    Args:
-        base_spikes (list): Base spike times in ms
-        delay (float): Delay to add in ms
-
-    Returns:
-        list: Delayed spike times in ms
-    """
-    return [t + delay for t in base_spikes]
 
 
 def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
@@ -199,6 +140,92 @@ def polar_bar_plot(
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     plt.show()
+
+
+def smooth_data(angles, max_voltages, window_size=5):
+    """Smooth data using a moving average over nearby points."""
+    smoothed_voltages = np.zeros_like(max_voltages)
+    for i in range(len(max_voltages)):
+        # Define the window range
+        start = max(0, i - window_size // 2)
+        end = min(len(max_voltages), i + window_size // 2 + 1)
+        # Average over the window
+        smoothed_voltages[i] = np.mean(max_voltages[start:end])
+    return smoothed_voltages
+
+def store_response_per_angle(
+    angles, all_voltages, max_voltages, spike_counts, filepath=None
+):
+    response_data = {}
+    """Store the response data in a JSON file."""
+    if filepath is None:
+        filepath = Path(__file__).parent / "response_data.json"
+
+    for i, angle in enumerate(angles):
+        response_data[str(angle)] = {
+            "max_voltage": max_voltages[i],
+            "spike_count": int(
+                spike_counts[i]
+            ),  # Convert to int for JSON serialization
+            "all_voltages": all_voltages[i].tolist(),  # Convert numpy array to list
+        }
+
+    with open(filepath, "w") as f:
+        json.dump(response_data, f, indent=4)
+
+    print(f"Response data stored in {filepath}")
+
+
+def load_response_per_angle(response_filepath=None, min_angle=1, max_angle=360, step=1):
+    """Load response data from a JSON file."""
+    if not Path(response_filepath).exists():
+        print(f"Response data file {response_filepath} does not exist.")
+        return
+    with open(response_filepath, "r") as f:
+        angles, all_voltages, max_voltages, spike_counts = [], [], [], []
+        try:
+            response_data = json.load(f)
+            for angle in range(min_angle, max_angle, step):
+                if str(angle) in response_data:
+                    data = response_data[str(angle)]
+                    angles.append(angle)
+                    all_voltages.append(np.array(data["all_voltages"]))
+                    max_voltages.append(data["max_voltage"])
+                    spike_counts.append(data["spike_count"])
+                else:
+                    print(f"No data for angle {angle}° in response file.")
+        except json.JSONDecodeError:
+            print(
+                "Response data file is empty or invalid. Please run the simulation first."
+            )
+            return
+    return angles, all_voltages, max_voltages, spike_counts
+
+
+def calculate_threshold(max_voltages, percentile=0.75):
+    """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
+    sorted_voltages = np.sort(max_voltages)
+    cutoff = int(len(sorted_voltages) * percentile)
+    threshold = sorted_voltages[cutoff]
+    return threshold
+
+
+def load_thresholds(filepath, l=None):
+    """Load thresholds from a JSON file."""
+    if not os.path.exists(filepath):
+        print(f"Thresholds file {filepath} does not exist.")
+        return {}
+
+    with open(filepath, "r") as f:
+        try:
+            thresholds = json.load(f)
+            threshold = thresholds.get(str(l), None) if l is not None else thresholds
+        except json.JSONDecodeError:
+            thresholds = {}
+            print("JSON file is empty or invalid. Starting fresh.")
+
+    return threshold
+
 
 if __name__ == "__main__":
     # test

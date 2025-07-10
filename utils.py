@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 
 
+# -- Utlity functions --
 def euclidean(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
@@ -65,6 +66,27 @@ def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
     return indices, times
 
 
+def smooth_data(angles, max_voltages, window_size=5):
+    """Smooth data using a moving average over nearby points."""
+    smoothed_voltages = np.zeros_like(max_voltages)
+    for i in range(len(max_voltages)):
+        # Define the window range
+        start = max(0, i - window_size // 2)
+        end = min(len(max_voltages), i + window_size // 2 + 1)
+        # Average over the window
+        smoothed_voltages[i] = np.mean(max_voltages[start:end])
+    return smoothed_voltages
+
+
+def calculate_threshold(max_voltages, percentile=0.75):
+    """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
+    sorted_voltages = np.sort(max_voltages)
+    cutoff = int(len(sorted_voltages) * percentile)
+    threshold = sorted_voltages[cutoff]
+    return threshold
+
+
+# -- Printing and plotting functions --
 def plot_jeffress_results(
     monitors, dendrite_lengths, resolution, title="Voltage traces for somas"
 ):
@@ -149,42 +171,146 @@ def polar_bar_plot(
     plt.show()
 
 
-def smooth_data(angles, max_voltages, window_size=5):
-    """Smooth data using a moving average over nearby points."""
-    smoothed_voltages = np.zeros_like(max_voltages)
-    for i in range(len(max_voltages)):
-        # Define the window range
-        start = max(0, i - window_size // 2)
-        end = min(len(max_voltages), i + window_size // 2 + 1)
-        # Average over the window
-        smoothed_voltages[i] = np.mean(max_voltages[start:end])
-    return smoothed_voltages
-
-
-def store_response_per_angle(
-    angles, all_voltages, max_voltages, spike_counts, filepath=None
+def polar_bar_plot_multi(
+    data_dict,
+    title="Polar Bar Plot",
+    xlabel="Angle (degrees)", 
+    ylabel="Value",
+    threshold=-20.0,
+    colors=None
 ):
-    response_data = {}
+    """Create a polar bar plot with multiple data series.
+    
+    Args:
+        data_dict (dict): Dictionary with {label: (angles, values)} pairs
+        title (str): Title of the plot
+        xlabel (str): Label for the x-axis
+        ylabel (str): Label for the y-axis
+        threshold (float): Threshold for color coding
+        colors (list): List of colors for each series (optional)
+    """
+    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    
+    if colors is None:
+        colors = plt.cm.tab10(np.linspace(0, 1, len(data_dict)))
+    
+    # Calculate global offset to avoid negative bars
+    all_values = [v for angles, values in data_dict.values() for v in values]
+    offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
+    
+    # Calculate bar width based on number of series and angular resolution
+    n_series = len(data_dict)
+    base_width = np.deg2rad(360 / len(list(data_dict.values())[0][0]))  # Assuming same angles for all
+    bar_width = base_width / n_series
+    
+    for i, (label, (angles, values)) in enumerate(data_dict.items()):
+        angles_rad = np.radians(angles)
+        adjusted_values = [v + offset for v in values]
+        
+        # Offset bars slightly for each series
+        offset_angles = angles_rad + (i - n_series/2) * bar_width
+        
+        bars = ax.bar(
+            offset_angles,
+            adjusted_values,
+            width=bar_width,
+            alpha=0.7,
+            label=label,
+            color=colors[i],
+            bottom=0.0
+        )
+    
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_title(title)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+    plt.show()
+
+
+def polar_bar_plot_grid(
+    data_dict,
+    title="Polar Bar Plots Grid",
+    threshold=-20.0,
+    cols=3
+):
+    """Create a grid of polar bar plots.
+    
+    Args:
+        data_dict (dict): Dictionary with {label: (angles, values)} pairs
+        title (str): Overall title
+        threshold (float): Threshold for color coding
+        cols (int): Number of columns in the grid
+    """
+    n_plots = len(data_dict)
+    rows = (n_plots + cols - 1) // cols  # Ceiling division
+    
+    fig = plt.figure(figsize=(5*cols, 4*rows))
+    fig.suptitle(title, fontsize=16)
+    
+    # Calculate global offset
+    all_values = [v for angles, values in data_dict.values() for v in values]
+    offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
+    
+    for i, (label, (angles, values)) in enumerate(data_dict.items()):
+        ax = fig.add_subplot(rows, cols, i+1, projection='polar')
+        
+        angles_rad = np.radians(angles)
+        adjusted_values = [v + offset for v in values]
+        
+        bars = ax.bar(
+            angles_rad,
+            adjusted_values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color=["red" if v - offset > threshold else "blue" for v in adjusted_values]
+        )
+        
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_title(f"Neuron {label}", pad=20)
+    
+    plt.tight_layout()
+    plt.show()
+
+
+# -- Storage and loading functions --
+def store_response_per_angle(
+    left_index, angles, all_voltages, max_voltages, spike_counts, filepath=None
+):
     """Store the response data in a JSON file."""
     if filepath is None:
         filepath = Path(__file__).parent / "response_data.json"
 
+    # Load existing data if file exists
+    if Path(filepath).exists():
+        with open(filepath, "r") as f:
+            try:
+                response_data = json.load(f)
+            except json.JSONDecodeError:
+                response_data = {}
+    else:
+        response_data = {}
+
+    neuron_response = {}
     for i, angle in enumerate(angles):
-        response_data[str(angle)] = {
+        neuron_response[str(angle)] = {
             "max_voltage": max_voltages[i],
-            "spike_count": int(
-                spike_counts[i]
-            ),  # Convert to int for JSON serialization
-            "all_voltages": all_voltages[i].tolist(),  # Convert numpy array to list
+            "spike_count": int(spike_counts[i]),
+            "all_voltages": all_voltages[i].tolist(),
         }
+
+    response_data[str(left_index)] = neuron_response
 
     with open(filepath, "w") as f:
         json.dump(response_data, f, indent=4)
 
-    print(f"Response data stored in {filepath}")
+    print(f"Response data for left_idx {left_index} stored in {filepath}")
 
 
-def load_response_per_angle(response_filepath=None, min_angle=1, max_angle=360, step=1):
+def load_response_per_angle(
+    left_index, response_filepath=None, min_angle=1, max_angle=360, step=1
+):
     """Load response data from a JSON file."""
     if not Path(response_filepath).exists():
         print(f"Response data file {response_filepath} does not exist.")
@@ -193,6 +319,11 @@ def load_response_per_angle(response_filepath=None, min_angle=1, max_angle=360, 
         angles, all_voltages, max_voltages, spike_counts = [], [], [], []
         try:
             response_data = json.load(f)
+            if str(left_index) not in response_data:
+                print(f)
+                print(f"No data for left index {left_index} in response file.")
+                return
+            response_data = response_data[str(left_index)]
             for angle in range(min_angle, max_angle, step):
                 if str(angle) in response_data:
                     data = response_data[str(angle)]
@@ -208,14 +339,6 @@ def load_response_per_angle(response_filepath=None, min_angle=1, max_angle=360, 
             )
             return
     return angles, all_voltages, max_voltages, spike_counts
-
-
-def calculate_threshold(max_voltages, percentile=0.75):
-    """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
-    sorted_voltages = np.sort(max_voltages)
-    cutoff = int(len(sorted_voltages) * percentile)
-    threshold = sorted_voltages[cutoff]
-    return threshold
 
 
 def load_thresholds(filepath, l=None):

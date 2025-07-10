@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import json
 
+
 def euclidean(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
@@ -107,8 +108,14 @@ def print_jeffress_simulation_info(dendrite_lengths, resolution):
             f"  Neuron {i}: L={dendrite_lengths[i]:.1f}μm, R={dendrite_lengths[resolution-1-i]:.1f}μm"
         )
 
+
 def polar_bar_plot(
-    angles, values, title="Polar Bar Plot", xlabel="Angle (degrees)", ylabel="Value", threshold = -20.0
+    angles,
+    values,
+    title="Polar Bar Plot",
+    xlabel="Angle (degrees)",
+    ylabel="Value",
+    threshold=-20.0,
 ):
     """Create a polar bar plot.
 
@@ -120,7 +127,7 @@ def polar_bar_plot(
         ylabel (str): Label for the y-axis
     """
     # when a threshold is crossed, plot this value in a different color
-    offset = -1 * np.min(values) # add to avoid negative bars
+    offset = -1 * np.min(values)  # add to avoid negative bars
     values = [v + offset for v in values]  # Adjust values to avoid negative bars
     angles_rad = np.radians(angles)
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
@@ -130,11 +137,11 @@ def polar_bar_plot(
         width=np.deg2rad(1),
         alpha=0.5,
         bottom=0.0,
-        color=["red" if v - offset > threshold else "blue" for v in values]
+        color=["red" if v - offset > threshold else "blue" for v in values],
     )
 
-    ax.set_theta_zero_location('N')  # Optional: 0° at the top
-    ax.set_theta_direction(-1)       # Optional: clockwise
+    ax.set_theta_zero_location("N")  # Optional: 0° at the top
+    ax.set_theta_direction(-1)  # Optional: clockwise
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
@@ -152,6 +159,7 @@ def smooth_data(angles, max_voltages, window_size=5):
         # Average over the window
         smoothed_voltages[i] = np.mean(max_voltages[start:end])
     return smoothed_voltages
+
 
 def store_response_per_angle(
     angles, all_voltages, max_voltages, spike_counts, filepath=None
@@ -212,7 +220,7 @@ def calculate_threshold(max_voltages, percentile=0.75):
 
 def load_thresholds(filepath, l=None):
     """Load thresholds from a JSON file."""
-    if not os.path.exists(filepath):
+    if not Path(filepath).exists:
         print(f"Thresholds file {filepath} does not exist.")
         return {}
 

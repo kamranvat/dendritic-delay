@@ -542,7 +542,6 @@ def plot_multiple_curves(
     plt.show()
 
 
-
 def main():
     n_comp = 11
     lambda_um = 200  # from paper

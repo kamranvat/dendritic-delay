@@ -195,10 +195,12 @@ def polar_bar_plot_multi(
         colors (list): List of colors for each series (optional)
     """
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    colormap = "RdBu"  # Use opposite colormap to the one used in multiple curves
 
     if colors is None:
-        # pull linearly spaced colors from the colormap "plasma"
-        cmap = plt.get_cmap("plasma")
+        # pull linearly spaced colors from a diverging colormap.
+        # some options: RdBu, PiYG, coolwarm, etc
+        cmap = plt.get_cmap(colormap)
         n_series = len(data_dict)
         colors = [cmap(i / n_series) for i in range(n_series)]
 
@@ -223,7 +225,7 @@ def polar_bar_plot_multi(
         bars = ax.bar(
             offset_angles,
             adjusted_values,
-            width=bar_width,
+            width=bar_width * 3.5,  # Increase width for better visibility
             alpha=0.7,
             label=label,
             color=colors[i],
@@ -267,7 +269,7 @@ def polar_bar_plot_grid(
         bars = ax.bar(
             angles_rad,
             adjusted_values,
-            width=np.deg2rad(1),
+            width=np.deg2rad(1), # increase for better visibility
             alpha=0.5,
             bottom=0.0,
             color=[
@@ -292,7 +294,9 @@ def plot_multiple_curves(
     left_end_index=11,
 ):
     # use a diverging colormap without white. options are "managua", "berlin", "vanimo"
-    colormap = "managua"
+    # ideally, use the "opposite" colormap to the one used in the polar plots. i.e.:
+    # berlin + RdBu, vanimo + PiYG, managua + BrBG
+    colormap = "berlin"
 
     plt.figure(figsize=(12, 6))
 

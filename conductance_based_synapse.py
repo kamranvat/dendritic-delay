@@ -545,8 +545,8 @@ def main():
     # multi-neuron plots:
     polar_plot_v_grid = False
     polar_plot_spk_grid = False
-    polar_plot_v_multi = False
-    polar_plot_spk_multi = False
+    polar_plot_v_multi = True
+    polar_plot_spk_multi = True
     multiple_curves = True  
     # multiprocessing flag:
     use_mp = True

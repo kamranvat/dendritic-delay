@@ -565,7 +565,7 @@ def main():
     min_angle = 0
     angle = 0
     max_angle = 360
-    step = 3
+    step = 1
     threshold_percentile = 0.9 # gets applied to max voltages
     thresh_filepath = Path(__file__).parent / "thresholds.json"
     response_filepath = Path(__file__).parent / "response_data.json"

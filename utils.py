@@ -10,32 +10,34 @@ import platform
 def setup_multiprocessing():
     """Setup multiprocessing with appropriate settings for different platforms."""
     import multiprocessing as mp
-    
+
     # Determine the best start method for the current platform
     if platform.system() == "Windows":
         # Windows requires 'spawn' method
-        if 'spawn' not in mp.get_all_start_methods():
+        if "spawn" not in mp.get_all_start_methods():
             print("Warning: 'spawn' method not available on this Windows system")
             return False
-        mp.set_start_method('spawn', force=True)
+        mp.set_start_method("spawn", force=True)
         return True
     elif platform.system() == "Darwin":  # macOS
         # macOS supports both 'fork' and 'spawn', but 'spawn' is safer for Brian2
-        if 'spawn' in mp.get_all_start_methods():
-            mp.set_start_method('spawn', force=True)
-        elif 'fork' in mp.get_all_start_methods():
-            mp.set_start_method('fork', force=True)
-            print("Warning: Using 'fork' method on macOS. Consider upgrading to Python 3.8+ for 'spawn' support.")
+        if "spawn" in mp.get_all_start_methods():
+            mp.set_start_method("spawn", force=True)
+        elif "fork" in mp.get_all_start_methods():
+            mp.set_start_method("fork", force=True)
+            print(
+                "Warning: Using 'fork' method on macOS. Consider upgrading to Python 3.8+ for 'spawn' support."
+            )
         else:
             print("Error: No suitable multiprocessing start method available")
             return False
         return True
     else:  # Linux and other Unix-like systems
         # Linux typically defaults to 'fork', but 'spawn' is more compatible with complex libraries
-        if 'spawn' in mp.get_all_start_methods():
-            mp.set_start_method('spawn', force=True)
-        elif 'fork' in mp.get_all_start_methods():
-            mp.set_start_method('fork', force=True)
+        if "spawn" in mp.get_all_start_methods():
+            mp.set_start_method("spawn", force=True)
+        elif "fork" in mp.get_all_start_methods():
+            mp.set_start_method("fork", force=True)
         else:
             print("Error: No suitable multiprocessing start method available")
             return False
@@ -177,13 +179,13 @@ def polar_bar_plot(
 def polar_bar_plot_multi(
     data_dict,
     title="Polar Bar Plot",
-    xlabel="Angle (degrees)", 
+    xlabel="Angle (degrees)",
     ylabel="Value",
     threshold=-20.0,
-    colors=None
+    colors=None,
 ):
     """Create a polar bar plot with multiple data series.
-    
+
     Args:
         data_dict (dict): Dictionary with {label: (angles, values)} pairs
         title (str): Title of the plot
@@ -193,26 +195,31 @@ def polar_bar_plot_multi(
         colors (list): List of colors for each series (optional)
     """
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-    
+
     if colors is None:
-        colors = plt.cm.tab10(np.linspace(0, 1, len(data_dict)))
-    
+        # pull linearly spaced colors from the colormap "plasma"
+        cmap = plt.get_cmap("plasma")
+        n_series = len(data_dict)
+        colors = [cmap(i / n_series) for i in range(n_series)]
+
     # Calculate global offset to avoid negative bars
     all_values = [v for angles, values in data_dict.values() for v in values]
     offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
-    
+
     # Calculate bar width based on number of series and angular resolution
     n_series = len(data_dict)
-    base_width = np.deg2rad(360 / len(list(data_dict.values())[0][0]))  # Assuming same angles for all
+    base_width = np.deg2rad(
+        360 / len(list(data_dict.values())[0][0])
+    )  # Assuming same angles for all
     bar_width = base_width / n_series
-    
+
     for i, (label, (angles, values)) in enumerate(data_dict.items()):
         angles_rad = np.radians(angles)
         adjusted_values = [v + offset for v in values]
-        
-        # Offset bars slightly for each series
-        offset_angles = angles_rad + (i - n_series/2) * bar_width
-        
+
+        # Offset bars slightly for each series for better visibility
+        offset_angles = angles_rad + (i - n_series / 2) * bar_width
+
         bars = ax.bar(
             offset_angles,
             adjusted_values,
@@ -220,24 +227,21 @@ def polar_bar_plot_multi(
             alpha=0.7,
             label=label,
             color=colors[i],
-            bottom=0.0
+            bottom=0.0,
         )
-    
+
     ax.set_theta_zero_location("N")
     ax.set_theta_direction(-1)
     ax.set_title(title)
-    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+    ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0))
     plt.show()
 
 
 def polar_bar_plot_grid(
-    data_dict,
-    title="Polar Bar Plots Grid",
-    threshold=-20.0,
-    cols=3
+    data_dict, title="Polar Bar Plots Grid", threshold=-20.0, cols=3
 ):
     """Create a grid of polar bar plots.
-    
+
     Args:
         data_dict (dict): Dictionary with {label: (angles, values)} pairs
         title (str): Overall title
@@ -246,33 +250,82 @@ def polar_bar_plot_grid(
     """
     n_plots = len(data_dict)
     rows = (n_plots + cols - 1) // cols  # Ceiling division
-    
-    fig = plt.figure(figsize=(5*cols, 4*rows))
+
+    fig = plt.figure(figsize=(5 * cols, 4 * rows))
     fig.suptitle(title, fontsize=16)
-    
+
     # Calculate global offset
     all_values = [v for angles, values in data_dict.values() for v in values]
     offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
-    
+
     for i, (label, (angles, values)) in enumerate(data_dict.items()):
-        ax = fig.add_subplot(rows, cols, i+1, projection='polar')
-        
+        ax = fig.add_subplot(rows, cols, i + 1, projection="polar")
+
         angles_rad = np.radians(angles)
         adjusted_values = [v + offset for v in values]
-        
+
         bars = ax.bar(
             angles_rad,
             adjusted_values,
             width=np.deg2rad(1),
             alpha=0.5,
             bottom=0.0,
-            color=["red" if v - offset > threshold else "blue" for v in adjusted_values]
+            color=[
+                "red" if v - offset > threshold else "blue" for v in adjusted_values
+            ],
         )
-        
+
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_title(f"Neuron {label}", pad=20)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_multiple_curves(
+    n_comp=11,
+    lambda_um=200,
+    angles=None,
+    all_max_voltages=None,
+    left_start_index=0,
+    left_end_index=11,
+):
+    # use a diverging colormap without white. options are "managua", "berlin", "vanimo"
+    colormap = "managua"
+
+    plt.figure(figsize=(12, 6))
+
+    # pull linearly spaced colors from the colormap "managua"
+    cmap = plt.get_cmap(colormap)
+    colors = [
+        cmap((idx) / (left_end_index - left_start_index))
+        for idx in range(left_start_index, left_end_index + 1)
+    ]
+    # all_max_voltages is a dict where all_voltage_data[neuron_label] = (angles, max_voltages)
+    # convert to a list of max voltages for each neuron:
+
+    for left_index in range(left_start_index, left_end_index + 1):
+        right_index = 2 * n_comp + 1 - left_index
+        neuron_label = f"L{left_index}_R{right_index - n_comp}"
+        angles, max_voltages = all_max_voltages[neuron_label]
+        left_label = f"{left_index}L"
+        right_label = f"{right_index - n_comp}R"
     
+        max_voltages = np.array(max_voltages)
+        smoothed_voltages = smooth_data(angles, max_voltages, window_size=20)
+    
+        plt.plot(
+            angles,
+            smoothed_voltages,
+            label=f"{left_label}, {right_label}",
+            color=colors[left_index - left_start_index],
+        )
+    plt.xlabel("Sound Angle (degrees)")
+    plt.ylabel("Max Soma Voltage (mV)")
+    plt.title("Interpolated Average Curves for Different Indices")
+    plt.legend(loc="upper right", fontsize="small")
+    plt.grid()
     plt.tight_layout()
     plt.show()
 

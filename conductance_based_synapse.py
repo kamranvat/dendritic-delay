@@ -516,46 +516,6 @@ def simulate_response_per_angle(
     return angles, all_voltages, max_voltages, spike_counts
 
 
-def plot_multiple_curves(
-    n_comp=11,
-    lambda_um=200,
-    angles=None,
-    all_max_voltages=None,
-    left_start_index=0,
-    left_end_index=11,
-):
-
-    plt.figure(figsize=(12, 6))
-    colors = plt.cm.tab10(
-        np.linspace(0, 1, n_comp)
-    )  # Generate distinct colors for each curve
-
-    for i, max_voltages in enumerate(all_max_voltages):
-        left_index = left_start_index + i  # Calculate left index based on loop index
-        right_index = 2 * n_comp + 1 - left_index  # Calculate corresponding right index
-        left_label = f"{left_index}L"
-        right_label = f"{right_index - n_comp}R"
-
-        max_voltages = np.array(max_voltages)
-        smoothed_voltages = smooth_data(angles, max_voltages, window_size=20)
-
-        # Only plot the smooth line, no markers!
-        plt.plot(
-            angles,
-            smoothed_voltages,
-            color=colors[left_index - 1],
-            label=f"{left_label}, {right_label}",
-        )
-
-    plt.xlabel("Sound Angle (degrees)")
-    plt.ylabel("Max Soma Voltage (mV)")
-    plt.title("Interpolated Average Curves for Different Indices")
-    plt.legend(loc="upper right", fontsize="small")
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-
-
 def main():
     # parameters
     n_comp = 11
@@ -579,14 +539,14 @@ def main():
     calc_thresholds = False  # if False, loads from file.
     simulate_response = False  # if False, loads from file. 
     # single neuron plots:
-    do_single_combo = True  
-    polar_plot_spikes = True  
-    polar_plot_max_voltages = True  
+    do_single_combo = False  
+    polar_plot_spikes = False  
+    polar_plot_max_voltages = False  
     # multi-neuron plots:
-    polar_plot_v_grid = True
-    polar_plot_spk_grid = True
-    polar_plot_v_multi = True
-    polar_plot_spk_multi = True
+    polar_plot_v_grid = False
+    polar_plot_spk_grid = False
+    polar_plot_v_multi = False
+    polar_plot_spk_multi = False
     multiple_curves = True  
     # multiprocessing flag:
     use_mp = True
@@ -710,7 +670,7 @@ def main():
         print(f"     Data loaded for {len(all_voltage_data)} neurons")
 
     # PHASE 3: Single neuron plots and analysis (sequential, as these are typically quick)
-    if any([do_single_combo, polar_plot_spikes, polar_plot_max_voltages, multiple_curves]):
+    if any([do_single_combo, polar_plot_spikes, polar_plot_max_voltages]):
         print(f"\n  Individual plots and analysis...")
         for left_index in tqdm(left_indices, desc="Individual analysis", unit="neuron"):
             right_index = 2 * n_comp + 1 - left_index
@@ -757,21 +717,10 @@ def main():
                     ylabel="Max Soma Voltage (mV)",
                 )
 
-            if multiple_curves:
-                plot_multiple_curves(
-                    thresh_filepath,
-                    n_comp=n_comp,
-                    lambda_um=lambda_um,
-                    min_angle=min_angle,
-                    max_angle=max_angle,
-                    step=step,
-                    default_threshold=-55.0,
-                    left_start_index=left_start_index,
-                    left_end_index=left_end_index,
-                )
+
 
     # PHASE 4: Multi-neuron plots
-    if any([polar_plot_v_multi, polar_plot_spk_multi, polar_plot_v_grid, polar_plot_spk_grid]):
+    if any([polar_plot_v_multi, polar_plot_spk_multi, polar_plot_v_grid, polar_plot_spk_grid, multiple_curves]):
         print(f"\n  Generating Multi-neuron plots")
         if polar_plot_v_multi and all_voltage_data:
             print("   Creating multi-series voltage plot...")
@@ -785,6 +734,16 @@ def main():
         if polar_plot_spk_grid and all_spike_data:
             print("   Creating spike grid plots...")
             polar_bar_plot_grid(all_spike_data, title="All Neurons - Spike Count")
+        if multiple_curves and all_voltage_data:
+            print("   Creating multiple curves plot...")
+            plot_multiple_curves(
+                n_comp=n_comp,
+                lambda_um=lambda_um,
+                angles=angles,
+                all_max_voltages=all_voltage_data,
+                left_start_index=left_start_index,
+                left_end_index=left_end_index,
+            )
         print("     Multi-neuron plots completed")
     
     print(f"\n  Summary:")

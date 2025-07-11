@@ -6,9 +6,80 @@ from scipy.interpolate import make_interp_spline
 from numpy import interp
 import json
 from pathlib import Path
+import multiprocessing as mp
 
 prefs.codegen.target = "numpy"
 defaultclock.dt = 0.01 * ms
+
+
+def calculate_threshold_worker(args):
+    """Worker function for calculating thresholds in parallel.
+
+    Args:
+        args: Tuple containing (left_index, n_comp, lambda_um, min_angle, max_angle, step)
+
+    Returns:
+        tuple: (left_index, threshold_value)
+    """
+    left_index, n_comp, lambda_um, min_angle, max_angle, step = args
+    right_index = 2 * n_comp + 1 - left_index
+
+    print(f"[Threshold Worker] Processing left_index: {left_index}, right_index: {right_index}")
+
+    try:
+        _, _, max_voltages, _ = simulate_response_per_angle(
+            n_comp=n_comp,
+            lambda_um=lambda_um,
+            left_index=left_index,
+            right_index=right_index,
+            min_angle=min_angle,
+            max_angle=max_angle,
+            step=step,
+            plot=False,
+        )
+        threshold = calculate_threshold(max_voltages)
+        print(f"[Threshold Worker] Completed left_index: {left_index}, threshold: {threshold}")
+        return left_index, threshold
+    except Exception as e:
+        print(f"[Threshold Worker] Error processing left_index {left_index}: {e}")
+        return left_index, None
+
+
+def simulate_response_worker(args):
+    """Worker function for simulating responses in parallel.
+    
+    Args:
+        args: Tuple containing (left_index, n_comp, lambda_um, min_angle, max_angle, step, thresh_filepath)
+        
+    Returns:
+        tuple: (left_index, angles, all_voltages, max_voltages, spike_counts)
+    """
+    left_index, n_comp, lambda_um, min_angle, max_angle, step, thresh_filepath = args
+    right_index = 2 * n_comp + 1 - left_index
+    
+    print(f"[Response Worker] Processing left_index: {left_index}, right_index: {right_index}")
+    
+    try:
+        # Load threshold for this specific neuron
+        threshold = load_thresholds(thresh_filepath, l=left_index)
+        
+        angles, all_voltages, max_voltages, spike_counts = simulate_response_per_angle(
+            left_index=left_index,
+            right_index=right_index,
+            n_comp=n_comp,
+            lambda_um=lambda_um,
+            min_angle=min_angle,
+            max_angle=max_angle,
+            step=step,
+            threshold=threshold,
+        )
+        
+        # Don't store here - return data to main process for sequential storage
+        print(f"[Response Worker] Completed left_index: {left_index}")
+        return left_index, angles, all_voltages, max_voltages, spike_counts
+    except Exception as e:
+        print(f"[Response Worker] Error processing left_index {left_index}: {e}")
+        return left_index, None, None, None, None
 
 
 def excite_both_dendrites(
@@ -440,7 +511,6 @@ def plot_multiple_curves(
     all_max_voltages=None,
     left_start_index=0,
     left_end_index=11,
-
 ):
 
     plt.figure(figsize=(12, 6))
@@ -479,11 +549,11 @@ def main():
     n_comp = 11
     lambda_um = 200  # from paper
     left_start_index = 1
-    left_end_index = 3
-    min_angle = 90
+    left_end_index = 11
+    min_angle = 0
     angle = 0
-    max_angle = 270
-    step = 2
+    max_angle = 360
+    step = 3
     threshold_percentile = 0.9 # gets applied to max voltages
     thresh_filepath = Path(__file__).parent / "thresholds.json"
     response_filepath = Path(__file__).parent / "response_data.json"
@@ -506,56 +576,84 @@ def main():
     polar_plot_v_multi = True
     polar_plot_spk_multi = True
     multiple_curves = False  
+    # multiprocessing flag:
+    use_mp = True
 
     # data collection for multi-neuron plots:
     all_voltage_data = {}
     all_spike_data = {}
 
-    # Run the simulation and analysis based on the flags
-    for left_index in range(left_start_index, left_end_index + 1):
-        right_index = 2 * n_comp + 1 - left_index
-        print(f"Left index: {left_index}, Right index: {right_index}")
+    # Multiprocessing setup
+    left_indices = list(range(left_start_index, left_end_index + 1))
+    num_processes = min(mp.cpu_count(), len(left_indices))
+    
+    if use_mp:
+        print(f"Using {num_processes} processes for parallel computation.")
+    else:
+        print("Using single process for computation.")
 
-        if calc_thresholds:
-            thresholds = load_thresholds(thresh_filepath)  # might print that no file exists
-            if not thresholds:
-                thresholds = {}  
-
-            # get max voltages for the current combination, store resulting threshold in json file
-            _, _, max_voltages, _ = simulate_response_per_angle(
-                n_comp=n_comp,
-                lambda_um=lambda_um,
-                left_index=left_index,
-                right_index=right_index,
-                min_angle=min_angle,
-                max_angle=max_angle,
-                step=step,
-                plot=False,
-            )
-            new_threshold = calculate_threshold(max_voltages)
-            thresholds[str(left_index)] = new_threshold # threshold is per neuron
-
-        if simulate_response:
-            # Simulate response for a single combination of left and right indices
-            angles, all_voltages, max_voltages, spike_counts = simulate_response_per_angle(
-                left_index=left_index,
-                right_index=right_index,
-                n_comp=n_comp,
-                lambda_um=lambda_um,
-                min_angle=min_angle,
-                max_angle=max_angle,
-                step=step,
-                threshold=load_thresholds(thresh_filepath, l=left_index),
-            )
-            store_response_per_angle(
-               left_index, angles, all_voltages, max_voltages, spike_counts, filepath=response_filepath
-            ) 
+    # PHASE 1: Calculate thresholds (must complete before response simulation)
+    if calc_thresholds:
+        print("\n=== PHASE 1: Calculating thresholds ===")
+        thresholds = load_thresholds(thresh_filepath)  # might print that no file exists
+        if not thresholds:
+            thresholds = {}
+        
+        # Prepare arguments for threshold calculation
+        threshold_args = [
+            (left_index, n_comp, lambda_um, min_angle, max_angle, step)
+            for left_index in left_indices
+        ]
+        
+        if use_mp:
+            with mp.Pool(processes=num_processes) as pool:
+                threshold_results = pool.map(calculate_threshold_worker, threshold_args)
         else:
-            # try to load the response data from a file
-            if not Path(response_filepath).exists():
-                print(f"Response data file {response_filepath} does not exist.")
-                return
-            with open(response_filepath, "r") as f:
+            threshold_results = [calculate_threshold_worker(args) for args in threshold_args]
+        
+        # Update thresholds dictionary and save to file
+        for left_index, threshold in threshold_results:
+            if threshold is not None:
+                thresholds[str(left_index)] = threshold
+        
+        # Save all thresholds to file before proceeding
+        save_thresholds(thresholds, thresh_filepath)
+
+    # PHASE 2: Simulate responses (can be parallelized now that thresholds are ready)
+    if simulate_response:
+        print("\n=== PHASE 2: Simulating responses ===")
+        
+        # Prepare arguments for response simulation
+        response_args = [
+            (left_index, n_comp, lambda_um, min_angle, max_angle, step, thresh_filepath)
+            for left_index in left_indices
+        ]
+        
+        if use_mp:
+            with mp.Pool(processes=num_processes) as pool:
+                response_results = pool.map(simulate_response_worker, response_args)
+        else:
+            response_results = [simulate_response_worker(args) for args in response_args]
+        
+        # Store all results sequentially to avoid file conflicts
+        for left_index, angles, all_voltages, max_voltages, spike_counts in response_results:
+            if angles is not None:
+                store_response_per_angle(
+                    left_index, angles, all_voltages, max_voltages, spike_counts, filepath=response_filepath
+                )
+        
+        # Collect results for plotting
+        for left_index, angles, all_voltages, max_voltages, spike_counts in response_results:
+            if angles is not None:
+                right_index = 2 * n_comp + 1 - left_index
+                neuron_label = f"L{left_index}_R{right_index - n_comp}"
+                all_voltage_data[neuron_label] = (angles, max_voltages)
+                all_spike_data[neuron_label] = (angles, spike_counts)
+    else:
+        # Load existing response data
+        print("\n=== Loading existing response data ===")
+        for left_index in left_indices:
+            try:
                 angles, all_voltages, max_voltages, spike_counts = load_response_per_angle(
                     left_index=left_index,
                     response_filepath=response_filepath,
@@ -563,6 +661,26 @@ def main():
                     max_angle=max_angle,
                     step=step,
                 )
+                if angles is not None:
+                    right_index = 2 * n_comp + 1 - left_index
+                    neuron_label = f"L{left_index}_R{right_index - n_comp}"
+                    all_voltage_data[neuron_label] = (angles, max_voltages)
+                    all_spike_data[neuron_label] = (angles, spike_counts)
+            except Exception as e:
+                print(f"Error loading data for left_index {left_index}: {e}")
+
+    # PHASE 3: Single neuron plots and analysis (sequential, as these are typically quick)
+    print("\n=== PHASE 3: Individual plots and analysis ===")
+    for left_index in left_indices:
+        right_index = 2 * n_comp + 1 - left_index
+        
+        # Load data for this neuron if available
+        neuron_label = f"L{left_index}_R{right_index - n_comp}"
+        if neuron_label in all_voltage_data:
+            angles, max_voltages = all_voltage_data[neuron_label]
+            _, spike_counts = all_spike_data[neuron_label]
+        else:
+            continue
 
         if do_single_combo:
             excite_both_dendrites(
@@ -579,11 +697,6 @@ def main():
                 right_comp_index=right_index,
                 threshold=load_thresholds(thresh_filepath, l=left_index),
             )
-
-        # _, _ = excite_one_dendrite(N=6, f_stim_Hz=500, f_pre_Hz=350, tmax_ms=10, jitter_ms=0, sound_angle=0, n_comp=n_comp, lambda_um=lambda_um, plot =True, left_comp_index=left_index, right_comp_index=right_index)
-        # _, _, _ = simulate_response_per_angle(n_comp=n_comp, lambda_um=lambda_um, left_index=left_index, right_index=right_index, min_angle=90, max_angle=270, step=1)
-
-        # _, _ = simulate_different_frequencies(min_frequency=50, max_frequency=1001, step=10)
 
         if polar_plot_spikes:
             polar_bar_plot(
@@ -616,22 +729,21 @@ def main():
                 left_end_index=left_end_index,
             )
 
-        # Store data for multi/grid plots
-        if angles is not None and max_voltages is not None:
-            neuron_label = f"L{left_index}_R{right_index - n_comp}"
-            all_voltage_data[neuron_label] = (angles, max_voltages)
-            all_spike_data[neuron_label] = (angles, spike_counts)
-
-
-    # Plot multi-neuron data
+    # PHASE 4: Multi-neuron plots
+    print("\n=== PHASE 4: Multi-neuron plots ===")
     if polar_plot_v_multi and all_voltage_data:
         polar_bar_plot_multi(all_voltage_data, title="All Neurons - Max Voltage")
     if polar_plot_spk_multi and all_spike_data:
         polar_bar_plot_multi(all_spike_data, title="All Neurons - Spike Count")
-    if polar_plot_v_grid:
+    if polar_plot_v_grid and all_voltage_data:
         polar_bar_plot_grid(all_voltage_data, title="All Neurons - Max Voltage")
-    if polar_plot_spk_grid:
+    if polar_plot_spk_grid and all_spike_data:
         polar_bar_plot_grid(all_spike_data, title="All Neurons - Spike Count")
 
 if __name__ == "__main__":
+    # Cross-platform multiprocessing setup
+    if not setup_multiprocessing():
+        print("Failed to setup multiprocessing. Running in single-threaded mode.")
+        # You could set use_mp = False here or handle the error appropriately
+    
     main()

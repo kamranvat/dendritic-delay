@@ -4,6 +4,42 @@ from brian2 import *
 import matplotlib.pyplot as plt
 from pathlib import Path
 import json
+import platform
+
+
+def setup_multiprocessing():
+    """Setup multiprocessing with appropriate settings for different platforms."""
+    import multiprocessing as mp
+    
+    # Determine the best start method for the current platform
+    if platform.system() == "Windows":
+        # Windows requires 'spawn' method
+        if 'spawn' not in mp.get_all_start_methods():
+            print("Warning: 'spawn' method not available on this Windows system")
+            return False
+        mp.set_start_method('spawn', force=True)
+        return True
+    elif platform.system() == "Darwin":  # macOS
+        # macOS supports both 'fork' and 'spawn', but 'spawn' is safer for Brian2
+        if 'spawn' in mp.get_all_start_methods():
+            mp.set_start_method('spawn', force=True)
+        elif 'fork' in mp.get_all_start_methods():
+            mp.set_start_method('fork', force=True)
+            print("Warning: Using 'fork' method on macOS. Consider upgrading to Python 3.8+ for 'spawn' support.")
+        else:
+            print("Error: No suitable multiprocessing start method available")
+            return False
+        return True
+    else:  # Linux and other Unix-like systems
+        # Linux typically defaults to 'fork', but 'spawn' is more compatible with complex libraries
+        if 'spawn' in mp.get_all_start_methods():
+            mp.set_start_method('spawn', force=True)
+        elif 'fork' in mp.get_all_start_methods():
+            mp.set_start_method('fork', force=True)
+        else:
+            print("Error: No suitable multiprocessing start method available")
+            return False
+        return True
 
 
 # -- Utlity functions --
@@ -354,7 +390,7 @@ def load_response_per_angle(
 
 def load_thresholds(filepath, l=None):
     """Load thresholds from a JSON file."""
-    if not Path(filepath).exists:
+    if not Path(filepath).exists():
         print(f"Thresholds file {filepath} does not exist.")
         return {}
 
@@ -367,6 +403,13 @@ def load_thresholds(filepath, l=None):
             print("JSON file is empty or invalid. Starting fresh.")
 
     return threshold
+
+
+def save_thresholds(thresholds, filepath):
+    """Save thresholds to a JSON file."""
+    with open(filepath, "w") as f:
+        json.dump(thresholds, f, indent=4)
+    print(f"Thresholds saved to {filepath}")
 
 
 if __name__ == "__main__":

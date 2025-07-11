@@ -12,7 +12,7 @@ def euclidean(p1, p2):
 
 
 def calculate_arrival_times(
-    angle_deg, speed_of_sound=300, inter_ear_distance=0.3, source_distance=1.0
+    angle_deg, speed_of_sound=343, inter_ear_distance=0.08, source_distance=1.0
 ):
     """
     Calculates the arrival times of sound to two ear points given the source position in ms.
@@ -137,7 +137,7 @@ def polar_bar_plot(
     title="Polar Bar Plot",
     xlabel="Angle (degrees)",
     ylabel="Value",
-    threshold=-20.0,
+    threshold=None,
 ):
     """Create a polar bar plot.
 
@@ -147,20 +147,31 @@ def polar_bar_plot(
         title (str): Title of the plot
         xlabel (str): Label for the x-axis
         ylabel (str): Label for the y-axis
+        threshold (float): Threshold for color coding bars above threshold (optional)
     """
     # when a threshold is crossed, plot this value in a different color
     offset = -1 * np.min(values)  # add to avoid negative bars
     values = [v + offset for v in values]  # Adjust values to avoid negative bars
     angles_rad = np.radians(angles)
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-    bars = ax.bar(
-        angles_rad,
-        values,
-        width=np.deg2rad(1),
-        alpha=0.5,
-        bottom=0.0,
-        color=["red" if v - offset > threshold else "blue" for v in values],
-    )
+    if threshold is not None:
+        bars = ax.bar(
+            angles_rad,
+            values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color=["red" if v - offset > threshold else "blue" for v in values],
+        )
+    else:
+        bars = ax.bar(
+            angles_rad,
+            values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color="blue",
+        )
 
     ax.set_theta_zero_location("N")  # Optional: 0° at the top
     ax.set_theta_direction(-1)  # Optional: clockwise
@@ -365,3 +376,4 @@ if __name__ == "__main__":
     print(
         f"Arrival times: Left Ear = {arrival_times[0]:.6f}ms, Right Ear = {arrival_times[1]:.6f}ms"
     )
+    print(f"Difference: {arrival_times[1] - arrival_times[0]:.6f}ms")

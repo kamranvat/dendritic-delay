@@ -478,12 +478,12 @@ def main():
     # parameters
     n_comp = 11
     lambda_um = 200  # from paper
-    left_start_index = 7
-    left_end_index = 8
+    left_start_index = 1
+    left_end_index = 3
     min_angle = 90
     angle = 0
     max_angle = 270
-    step = 3
+    step = 2
     threshold_percentile = 0.9 # gets applied to max voltages
     thresh_filepath = Path(__file__).parent / "thresholds.json"
     response_filepath = Path(__file__).parent / "response_data.json"
@@ -494,12 +494,12 @@ def main():
 
     # flags
     # computation:
-    calc_thresholds = False  # if False, loads from file.
-    simulate_response = False  # if False, loads from file. 
+    calc_thresholds = True  # if False, loads from file.
+    simulate_response = True  # if False, loads from file. 
     # single neuron plots:
     do_single_combo = False  
-    polar_plot_spikes = True  
-    polar_plot_max_voltages = True  
+    polar_plot_spikes = False  
+    polar_plot_max_voltages = False  
     # multi-neuron plots:
     polar_plot_v_grid = True
     polar_plot_spk_grid = True

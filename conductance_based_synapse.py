@@ -576,18 +576,18 @@ def main():
 
     # flags
     # computation:
-    calc_thresholds = True  # if False, loads from file.
-    simulate_response = True  # if False, loads from file. 
+    calc_thresholds = False  # if False, loads from file.
+    simulate_response = False  # if False, loads from file. 
     # single neuron plots:
-    do_single_combo = False  
-    polar_plot_spikes = False  
-    polar_plot_max_voltages = False  
+    do_single_combo = True  
+    polar_plot_spikes = True  
+    polar_plot_max_voltages = True  
     # multi-neuron plots:
     polar_plot_v_grid = True
     polar_plot_spk_grid = True
     polar_plot_v_multi = True
     polar_plot_spk_multi = True
-    multiple_curves = False  
+    multiple_curves = True  
     # multiprocessing flag:
     use_mp = True
 

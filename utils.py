@@ -123,50 +123,6 @@ def calculate_threshold(max_voltages, percentile=0.75):
 
 
 # -- Printing and plotting functions --
-def plot_jeffress_results(
-    monitors, dendrite_lengths, resolution, title="Voltage traces for somas"
-):
-    """Plot simulation results.
-
-    Args:
-        monitors (list): List of StateMonitor objects
-        dendrite_lengths (array): Array of dendrite lengths
-        resolution (int): Number of neurons
-        title (str): Plot title
-    """
-    plt.figure(figsize=(12, 8))
-
-    for i in range(resolution):
-        # soma is compartment 1 in each neuron
-        plt.plot(
-            monitors[i].t / ms,
-            monitors[i].v[1] / mV,
-            label=f"Soma {i} (L={dendrite_lengths[i]:.1f}, R={dendrite_lengths[resolution-1-i]:.1f})",
-        )
-
-    plt.xlabel("Time (ms)")
-    plt.ylabel("Voltage (mV)")
-    plt.legend()
-    plt.title(title)
-    plt.tight_layout()
-    plt.show()
-
-
-def print_jeffress_simulation_info(dendrite_lengths, resolution):
-    """Print simulation information.
-
-    Args:
-        dendrite_lengths (array): Array of dendrite lengths
-        resolution (int): Number of neurons
-    """
-    print(f"Simulation completed. Plotted {resolution} soma voltage traces.")
-    print("Dendrite lengths (left, right) for each neuron:")
-    for i in range(resolution):
-        print(
-            f"  Neuron {i}: L={dendrite_lengths[i]:.1f}μm, R={dendrite_lengths[resolution-1-i]:.1f}μm"
-        )
-
-
 def polar_bar_plot(
     angles,
     values,

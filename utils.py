@@ -1,14 +1,18 @@
 import math
 import numpy as np
 from brian2 import *
+import matplotlib.pyplot as plt
+from pathlib import Path
+import json
 
 
+# -- Utlity functions --
 def euclidean(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
 def calculate_arrival_times(
-    angle_deg, speed_of_sound=300, inter_ear_distance=0.3, source_distance=1.0
+    angle_deg, speed_of_sound=343, inter_ear_distance=0.08, source_distance=1.0
 ):
     """
     Calculates the arrival times of sound to two ear points given the source position in ms.
@@ -46,67 +50,6 @@ def calculate_arrival_times(
     return (time_left, time_right)
 
 
-# Utility functions for generating spike distributions
-def generate_poisson_spikes(rate, duration, n_trials=1, seed=None):
-    """Generate Poisson spike trains.
-
-    Args:
-        rate (float): Firing rate in Hz
-        duration (float): Duration in ms
-        n_trials (int): Number of spike trains
-        seed (int): Random seed for reproducibility
-
-    Returns:
-        list: List of spike times in ms
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    spike_times = []
-    for trial in range(n_trials):
-        # Generate inter-spike intervals from exponential distribution
-        intervals = np.random.exponential(
-            1000.0 / rate, size=int(rate * duration / 1000 * 3)
-        )  # overestimate
-        times = np.cumsum(intervals)
-        times = times[times < duration]  # keep only spikes within duration
-        spike_times.extend(times)
-
-    return sorted(spike_times)
-
-
-def generate_regular_spikes(interval, duration, start_time=0):
-    """Generate regular spike train.
-
-    Args:
-        interval (float): Inter-spike interval in ms
-        duration (float): Duration in ms
-        start_time (float): First spike time in ms
-
-    Returns:
-        list: List of spike times in ms
-    """
-    spike_times = []
-    t = start_time
-    while t < duration:
-        spike_times.append(t)
-        t += interval
-    return spike_times
-
-
-def generate_delayed_spikes(base_spikes, delay):
-    """Generate delayed version of spike pattern.
-
-    Args:
-        base_spikes (list): Base spike times in ms
-        delay (float): Delay to add in ms
-
-    Returns:
-        list: Delayed spike times in ms
-    """
-    return [t + delay for t in base_spikes]
-
-
 def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
     cycle_length = 1000 / f_stim_Hz  # ms per period
     n_cycles = int(tmax_ms / cycle_length)
@@ -123,6 +66,27 @@ def binomial_spike_train(N, f_stim_Hz, f_pre_Hz, tmax_ms, phase=0, jitter_ms=0):
     return indices, times
 
 
+def smooth_data(angles, max_voltages, window_size=5):
+    """Smooth data using a moving average over nearby points."""
+    smoothed_voltages = np.zeros_like(max_voltages)
+    for i in range(len(max_voltages)):
+        # Define the window range
+        start = max(0, i - window_size // 2)
+        end = min(len(max_voltages), i + window_size // 2 + 1)
+        # Average over the window
+        smoothed_voltages[i] = np.mean(max_voltages[start:end])
+    return smoothed_voltages
+
+
+def calculate_threshold(max_voltages, percentile=0.75):
+    """Get the max voltages for N angles at one neuron. Return the ideal threshold for spikes based on a percentile of N."""
+    sorted_voltages = np.sort(max_voltages)
+    cutoff = int(len(sorted_voltages) * percentile)
+    threshold = sorted_voltages[cutoff]
+    return threshold
+
+
+# -- Printing and plotting functions --
 def plot_jeffress_results(
     monitors, dendrite_lengths, resolution, title="Voltage traces for somas"
 ):
@@ -166,8 +130,14 @@ def print_jeffress_simulation_info(dendrite_lengths, resolution):
             f"  Neuron {i}: L={dendrite_lengths[i]:.1f}μm, R={dendrite_lengths[resolution-1-i]:.1f}μm"
         )
 
+
 def polar_bar_plot(
-    angles, values, title="Polar Bar Plot", xlabel="Angle (degrees)", ylabel="Value", threshold = -20.0
+    angles,
+    values,
+    title="Polar Bar Plot",
+    xlabel="Angle (degrees)",
+    ylabel="Value",
+    threshold=None,
 ):
     """Create a polar bar plot.
 
@@ -177,28 +147,227 @@ def polar_bar_plot(
         title (str): Title of the plot
         xlabel (str): Label for the x-axis
         ylabel (str): Label for the y-axis
+        threshold (float): Threshold for color coding bars above threshold (optional)
     """
     # when a threshold is crossed, plot this value in a different color
-    offset = -1 * np.min(values) # add to avoid negative bars
+    offset = -1 * np.min(values)  # add to avoid negative bars
     values = [v + offset for v in values]  # Adjust values to avoid negative bars
     angles_rad = np.radians(angles)
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-    bars = ax.bar(
-        angles_rad,
-        values,
-        width=np.deg2rad(1),
-        alpha=0.5,
-        bottom=0.0,
-        color=["red" if v - offset > threshold else "blue" for v in values]
-    )
+    if threshold is not None:
+        bars = ax.bar(
+            angles_rad,
+            values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color=["red" if v - offset > threshold else "blue" for v in values],
+        )
+    else:
+        bars = ax.bar(
+            angles_rad,
+            values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color="blue",
+        )
 
-    ax.set_theta_zero_location('N')  # Optional: 0° at the top
-    ax.set_theta_direction(-1)       # Optional: clockwise
+    ax.set_theta_zero_location("N")  # Optional: 0° at the top
+    ax.set_theta_direction(-1)  # Optional: clockwise
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     plt.show()
+
+
+def polar_bar_plot_multi(
+    data_dict,
+    title="Polar Bar Plot",
+    xlabel="Angle (degrees)", 
+    ylabel="Value",
+    threshold=-20.0,
+    colors=None
+):
+    """Create a polar bar plot with multiple data series.
+    
+    Args:
+        data_dict (dict): Dictionary with {label: (angles, values)} pairs
+        title (str): Title of the plot
+        xlabel (str): Label for the x-axis
+        ylabel (str): Label for the y-axis
+        threshold (float): Threshold for color coding
+        colors (list): List of colors for each series (optional)
+    """
+    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    
+    if colors is None:
+        colors = plt.cm.tab10(np.linspace(0, 1, len(data_dict)))
+    
+    # Calculate global offset to avoid negative bars
+    all_values = [v for angles, values in data_dict.values() for v in values]
+    offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
+    
+    # Calculate bar width based on number of series and angular resolution
+    n_series = len(data_dict)
+    base_width = np.deg2rad(360 / len(list(data_dict.values())[0][0]))  # Assuming same angles for all
+    bar_width = base_width / n_series
+    
+    for i, (label, (angles, values)) in enumerate(data_dict.items()):
+        angles_rad = np.radians(angles)
+        adjusted_values = [v + offset for v in values]
+        
+        # Offset bars slightly for each series
+        offset_angles = angles_rad + (i - n_series/2) * bar_width
+        
+        bars = ax.bar(
+            offset_angles,
+            adjusted_values,
+            width=bar_width,
+            alpha=0.7,
+            label=label,
+            color=colors[i],
+            bottom=0.0
+        )
+    
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_title(title)
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+    plt.show()
+
+
+def polar_bar_plot_grid(
+    data_dict,
+    title="Polar Bar Plots Grid",
+    threshold=-20.0,
+    cols=3
+):
+    """Create a grid of polar bar plots.
+    
+    Args:
+        data_dict (dict): Dictionary with {label: (angles, values)} pairs
+        title (str): Overall title
+        threshold (float): Threshold for color coding
+        cols (int): Number of columns in the grid
+    """
+    n_plots = len(data_dict)
+    rows = (n_plots + cols - 1) // cols  # Ceiling division
+    
+    fig = plt.figure(figsize=(5*cols, 4*rows))
+    fig.suptitle(title, fontsize=16)
+    
+    # Calculate global offset
+    all_values = [v for angles, values in data_dict.values() for v in values]
+    offset = -1 * np.min(all_values) if np.min(all_values) < 0 else 0
+    
+    for i, (label, (angles, values)) in enumerate(data_dict.items()):
+        ax = fig.add_subplot(rows, cols, i+1, projection='polar')
+        
+        angles_rad = np.radians(angles)
+        adjusted_values = [v + offset for v in values]
+        
+        bars = ax.bar(
+            angles_rad,
+            adjusted_values,
+            width=np.deg2rad(1),
+            alpha=0.5,
+            bottom=0.0,
+            color=["red" if v - offset > threshold else "blue" for v in adjusted_values]
+        )
+        
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_title(f"Neuron {label}", pad=20)
+    
+    plt.tight_layout()
+    plt.show()
+
+
+# -- Storage and loading functions --
+def store_response_per_angle(
+    left_index, angles, all_voltages, max_voltages, spike_counts, filepath=None
+):
+    """Store the response data in a JSON file."""
+    if filepath is None:
+        filepath = Path(__file__).parent / "response_data.json"
+
+    # Load existing data if file exists
+    if Path(filepath).exists():
+        with open(filepath, "r") as f:
+            try:
+                response_data = json.load(f)
+            except json.JSONDecodeError:
+                response_data = {}
+    else:
+        response_data = {}
+
+    neuron_response = {}
+    for i, angle in enumerate(angles):
+        neuron_response[str(angle)] = {
+            "max_voltage": max_voltages[i],
+            "spike_count": int(spike_counts[i]),
+            "all_voltages": all_voltages[i].tolist(),
+        }
+
+    response_data[str(left_index)] = neuron_response
+
+    with open(filepath, "w") as f:
+        json.dump(response_data, f, indent=4)
+
+    print(f"Response data for left_idx {left_index} stored in {filepath}")
+
+
+def load_response_per_angle(
+    left_index, response_filepath=None, min_angle=1, max_angle=360, step=1
+):
+    """Load response data from a JSON file."""
+    if not Path(response_filepath).exists():
+        print(f"Response data file {response_filepath} does not exist.")
+        return
+    with open(response_filepath, "r") as f:
+        angles, all_voltages, max_voltages, spike_counts = [], [], [], []
+        try:
+            response_data = json.load(f)
+            if str(left_index) not in response_data:
+                print(f)
+                print(f"No data for left index {left_index} in response file.")
+                return
+            response_data = response_data[str(left_index)]
+            for angle in range(min_angle, max_angle, step):
+                if str(angle) in response_data:
+                    data = response_data[str(angle)]
+                    angles.append(angle)
+                    all_voltages.append(np.array(data["all_voltages"]))
+                    max_voltages.append(data["max_voltage"])
+                    spike_counts.append(data["spike_count"])
+                else:
+                    print(f"No data for angle {angle}° in response file.")
+        except json.JSONDecodeError:
+            print(
+                "Response data file is empty or invalid. Please run the simulation first."
+            )
+            return
+    return angles, all_voltages, max_voltages, spike_counts
+
+
+def load_thresholds(filepath, l=None):
+    """Load thresholds from a JSON file."""
+    if not Path(filepath).exists:
+        print(f"Thresholds file {filepath} does not exist.")
+        return {}
+
+    with open(filepath, "r") as f:
+        try:
+            thresholds = json.load(f)
+            threshold = thresholds.get(str(l), None) if l is not None else thresholds
+        except json.JSONDecodeError:
+            thresholds = {}
+            print("JSON file is empty or invalid. Starting fresh.")
+
+    return threshold
+
 
 if __name__ == "__main__":
     # test
@@ -207,3 +376,4 @@ if __name__ == "__main__":
     print(
         f"Arrival times: Left Ear = {arrival_times[0]:.6f}ms, Right Ear = {arrival_times[1]:.6f}ms"
     )
+    print(f"Difference: {arrival_times[1] - arrival_times[0]:.6f}ms")

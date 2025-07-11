@@ -269,7 +269,7 @@ def polar_bar_plot_grid(
         bars = ax.bar(
             angles_rad,
             adjusted_values,
-            width=np.deg2rad(1), # increase for better visibility
+            width=np.deg2rad(1),  # increase for better visibility
             alpha=0.5,
             bottom=0.0,
             color=[
@@ -315,10 +315,10 @@ def plot_multiple_curves(
         angles, max_voltages = all_max_voltages[neuron_label]
         left_label = f"{left_index}L"
         right_label = f"{right_index - n_comp}R"
-    
+
         max_voltages = np.array(max_voltages)
         smoothed_voltages = smooth_data(angles, max_voltages, window_size=20)
-    
+
         plt.plot(
             angles,
             smoothed_voltages,
@@ -329,6 +329,40 @@ def plot_multiple_curves(
     plt.ylabel("Max Soma Voltage (mV)")
     plt.title("Interpolated Average Curves for Different Indices")
     plt.legend(loc="upper right", fontsize="small")
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_neuron_thresholds(
+    thresholds_path,
+    n_comp=11,
+    left_start_index=0,
+    left_end_index=11,
+    title="Thresholds for Different Neurons",
+    xlabel="Neuron Index",
+    ylabel="Threshold (mV)",
+):
+    """Plot thresholds for different neurons."""
+    indices = []
+    values = []
+
+    for left_index in range(left_start_index, left_end_index + 1):
+        right_index = 2 * n_comp + 1 - left_index
+        neuron_label = f"L{left_index}_R{right_index - n_comp}"
+        threshold = load_thresholds(thresholds_path, left_index)
+        if threshold is None:
+            print(f"No threshold found for neuron {neuron_label}. Skipping.")
+        else:
+            indices.append(left_index)
+            values.append(threshold)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(indices, values, marker="o", linestyle="-", color="b")
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xticks(indices)
     plt.grid()
     plt.tight_layout()
     plt.show()
